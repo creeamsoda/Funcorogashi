@@ -9,6 +9,7 @@ signal match_ended(results: Array)
 const SPAWN_SPOTS := [
 	Vector3(-9, 0, -6), Vector3(9, 0, -6), Vector3(-9, 0, 6), Vector3(9, 0, 6),
 ]
+const CROWN_HIDE_TIME := 30.0
 
 var players: Array[Player] = []
 var stats := {}          ## player_id -> {dash_hits:int, pickups:int}
@@ -16,6 +17,7 @@ var time_left := 0.0
 var _running := false
 var _dung: Node3D
 var _hud: Hud
+var _crown_hidden := false
 
 
 func _ready() -> void:
@@ -27,6 +29,7 @@ func _ready() -> void:
 	add_child(_dung)
 
 	_spawn_players()
+	_update_leader_crown()
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
 	add_child(load("res://scenes/animals/AnimalSpawner.tscn").instantiate())
@@ -80,6 +83,9 @@ func _process(delta: float) -> void:
 	if not _running:
 		return
 	time_left -= delta
+	if not _crown_hidden and time_left <= CROWN_HIDE_TIME:
+		_crown_hidden = true
+		_hide_all_crowns()
 	time_changed.emit(time_left)
 	if _hud != null:
 		_hud.set_time(time_left)
@@ -90,6 +96,8 @@ func _process(delta: float) -> void:
 func _on_size_changed(pid: int, size: float) -> void:
 	if _hud != null:
 		_hud.set_size(pid, size)
+	if not _crown_hidden:
+		_update_leader_crown()
 
 
 func _on_dash_hit(attacker_id: int, _victim_id: int) -> void:
@@ -107,6 +115,7 @@ func spawn_pickup(pos: Vector3, size: float, owner_id: int = -1) -> DungPickup:
 
 func _end_match() -> void:
 	_running = false
+	_hide_all_crowns()
 	var results: Array = []
 	for p in players:
 		results.append({
@@ -118,3 +127,19 @@ func _end_match() -> void:
 	var res := (load("res://scenes/ui/Results.tscn") as PackedScene).instantiate() as Results
 	add_child(res)
 	res.show_results(results)
+
+
+func _update_leader_crown() -> void:
+	if players.is_empty() or _crown_hidden:
+		return
+	var leader: Player = players[0]
+	for p in players:
+		if p.size > leader.size:
+			leader = p
+	for p in players:
+		p.set_crown_visible(p == leader)
+
+
+func _hide_all_crowns() -> void:
+	for p in players:
+		p.set_crown_visible(false)

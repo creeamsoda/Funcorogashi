@@ -11,6 +11,10 @@ signal dash_hit(attacker_id: int, victim_id: int)
 
 enum State { ROLLING, DASH_WINDUP, DASHING, STUNNED }
 
+const DUNG_COLOR := Color(0.45, 0.30, 0.18)
+const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
+const WINDUP_FLASH_INTERVAL := 0.08
+
 const PLAYER_COLORS := [
 	Color(0.90, 0.30, 0.25), # P1 赤
 	Color(0.25, 0.55, 0.95), # P2 青
@@ -56,9 +60,11 @@ var _slow_factor := 1.0
 
 var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
+var _ball_mat: StandardMaterial3D
 var _ball_shape: SphereShape3D
 var _beetle: MeshInstance3D
 var _beetle_mat: StandardMaterial3D
+var _crown: Label3D
 
 
 func _ready() -> void:
@@ -128,6 +134,12 @@ func _current_slow() -> float:
 
 func body_radius() -> float:
 	return _radius()
+
+
+## 現在1位を示す仮の王冠表示。順位判定と残り30秒の制御は GameManager が行う。
+func set_crown_visible(show: bool) -> void:
+	if _crown != null:
+		_crown.visible = show
 
 
 ## 保有フンの drop_ratio 分を地面に分裂ドロップし、スタン状態に入る。
@@ -331,13 +343,15 @@ func _build_visual() -> void:
 
 	_ball_mesh = SphereMesh.new()
 	_ball_mi = MeshInstance3D.new()
+	_ball_mi.name = "DungBall"
 	_ball_mi.mesh = _ball_mesh
-	var ball_mat := StandardMaterial3D.new()
-	ball_mat.albedo_color = Color(0.45, 0.30, 0.18) # フンの茶色
-	_ball_mi.material_override = ball_mat
+	_ball_mat = StandardMaterial3D.new()
+	_ball_mat.albedo_color = DUNG_COLOR
+	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 
 	_beetle = MeshInstance3D.new()
+	_beetle.name = "Beetle"
 	var bmesh := BoxMesh.new()
 	bmesh.size = Vector3(0.7, 0.3, 0.9)
 	_beetle.mesh = bmesh
@@ -346,6 +360,20 @@ func _build_visual() -> void:
 	_beetle.material_override = _beetle_mat
 	add_child(_beetle)
 
+	_crown = Label3D.new()
+	_crown.name = "LeaderCrown"
+	_crown.text = "👑"
+	_crown.font_size = 96
+	_crown.pixel_size = 0.012
+	_crown.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_crown.no_depth_test = true
+	_crown.outline_size = 10
+	var emoji_font := SystemFont.new()
+	emoji_font.font_names = PackedStringArray(["Segoe UI Emoji", "Noto Color Emoji"])
+	_crown.font = emoji_font
+	_crown.visible = false
+	add_child(_crown)
+
 
 func _apply_size_visual() -> void:
 	var r := _radius()
@@ -353,25 +381,34 @@ func _apply_size_visual() -> void:
 	_ball_mesh.height = r * 2.0
 	_ball_shape.radius = r
 	position.y = r
+	if _crown != null:
+		_crown.position = Vector3(0, r + 1.0, 0)
 	_update_beetle()
 
 
 func _update_beetle() -> void:
 	var r := _radius()
 	_beetle.position = -facing * (r + 0.35) + Vector3(0, -r + 0.15, 0)
+	var flash_on := _windup_flash_on()
 	if _beetle_mat != null:
-		_beetle_mat.albedo_color = _state_tint()
+		_beetle_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else _state_tint()
+	if _ball_mat != null:
+		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else DUNG_COLOR
 
 
 ## 状態に応じた本体の色。前隙=白で予備動作を予告 / スタン=灰。
 func _state_tint() -> Color:
 	match state:
-		State.DASH_WINDUP:
-			return Color(1, 1, 1)
 		State.STUNNED:
 			return Color(0.4, 0.4, 0.4)
 		_:
 			return PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
+
+
+func _windup_flash_on() -> bool:
+	if state != State.DASH_WINDUP:
+		return false
+	return int(_windup_t / WINDUP_FLASH_INTERVAL) % 2 == 0
 
 
 func _roll_ball(delta: float) -> void:

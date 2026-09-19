@@ -9,6 +9,7 @@ var _vel := Vector3.ZERO
 var _size := 1.0
 var _start := Vector3.ZERO
 var _target := Vector3.ZERO
+var _landing_preview: MeshInstance3D
 
 static func create(from: Vector3, to: Vector3, sz: float = 1.0) -> ThrownDung:
 	var t := ThrownDung.new()
@@ -19,6 +20,7 @@ static func create(from: Vector3, to: Vector3, sz: float = 1.0) -> ThrownDung:
 
 func _ready() -> void:
 	global_position = _start
+	_create_landing_preview()
 	_vel = (_target - _start) / FLIGHT
 	_vel.y += 0.5 * G * FLIGHT # FLIGHT秒で target に着地する初速
 	var mi := MeshInstance3D.new()
@@ -39,6 +41,7 @@ func _physics_process(delta: float) -> void:
 	var target := _check_player_hit()
 	if target != null:
 		target.apply_orangutan_hit() # 直撃: ボーナス+軽スロウ(切替可)。地面フンは残さない
+		_clear_landing_preview()
 		queue_free()
 		return
 	if global_position.y <= 0.0:
@@ -54,6 +57,7 @@ func _check_player_hit() -> Player:
 	return null
 
 func _land() -> void:
+	_clear_landing_preview()
 	var c := get_tree().get_first_node_in_group("dung_container")
 	var parent: Node = c if c != null else get_parent()
 	if parent != null:
@@ -61,3 +65,33 @@ func _land() -> void:
 		parent.add_child(pk)
 		pk.global_position = Vector3(global_position.x, 0.0, global_position.z)
 	queue_free()
+
+
+func _create_landing_preview() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	_landing_preview = MeshInstance3D.new()
+	_landing_preview.name = "LandingPreview"
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.5
+	mesh.height = 0.28
+	_landing_preview.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.40, 0.26, 0.15, 0.25)
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_landing_preview.material_override = mat
+	_landing_preview.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(_landing_preview)
+	_landing_preview.global_position = Vector3(_target.x, 0.14, _target.z)
+
+
+func _clear_landing_preview() -> void:
+	if is_instance_valid(_landing_preview):
+		_landing_preview.queue_free()
+	_landing_preview = null
+
+
+func _exit_tree() -> void:
+	_clear_landing_preview()
