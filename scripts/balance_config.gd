@@ -33,7 +33,8 @@ extends Resource
 @export_group("Drop & Pickup")
 @export var drop_ratio: float = 0.5                ## 被弾/自滅時のドロップ割合
 @export var drop_scatter_count: int = 4            ## 1回の分裂ドロップ個数
-@export var drop_scatter_radius: float = 2.0       ## 散らばり半径(m)
+@export var drop_scatter_radius: float = 2.0       ## 散らばり半径の最大(m)
+@export var drop_scatter_min_radius: float = 2.0   ## 散らばり半径の最小(m)。本人の直近に落とさない
 @export var pickup_collect_radius: float = 0.4     ## 回収判定の追加余裕(m)
 @export var pickup_despawn_enabled: bool = false   ## 地面フンの自然消滅(既定オフ)
 @export var pickup_despawn_time: float = 10.0      ## 消滅までの秒数

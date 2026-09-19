@@ -28,6 +28,10 @@ const RIGHT_DASH_BUTTON := 3
 ## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
 const ARROWS_DASH_KEY := KEY_SLASH
 const WASD_DASH_KEY := KEY_SHIFT
+## アリーナ内寸(Stage.STAGE_SIZE の半分に一致)。ドロップを場外に出さないために使用。
+const ARENA_HX := 12.0
+const ARENA_HZ := 8.0
+const DROP_MARGIN := 0.6
 
 @export var player_id: int = 0
 @export var input_device: int = -1     ## -1=キーボード矢印 / -2=WASD / 0..=Joy-Conデバイスid / その他=待機
@@ -225,13 +229,31 @@ func _scatter_drops(total: float) -> void:
 	var n: int = maxi(1, Config.balance.drop_scatter_count)
 	var each: float = total / float(n)
 	var ready_at: float = Time.get_ticks_msec() / 1000.0 + Config.balance.stun_duration
+	var origin := global_position
 	for i in n:
 		var pk := DungPickup.create(each, player_id)
 		pk.collectible_at = ready_at # 自分はスタン明けまで回収不可
 		container.add_child(pk)
-		var ang: float = TAU * float(i) / float(n) + randf() * 0.6
-		var r: float = Config.balance.drop_scatter_radius
-		pk.global_position = global_position + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
+		pk.global_position = _drop_position(origin)
+
+
+## 散らばり位置: アリーナ内(場外に出さない) かつ 本人から min〜max の距離(直近には落とさない)。
+func _drop_position(origin: Vector3) -> Vector3:
+	var bx: float = ARENA_HX - DROP_MARGIN
+	var bz: float = ARENA_HZ - DROP_MARGIN
+	var min_r: float = Config.balance.drop_scatter_min_radius
+	var max_r: float = maxf(min_r, Config.balance.drop_scatter_radius)
+	for _attempt in 12:
+		var ang := randf() * TAU
+		var d := randf_range(min_r, max_r)
+		var p := origin + Vector3(cos(ang), 0.0, sin(ang)) * d
+		if absf(p.x) <= bx and absf(p.z) <= bz:
+			return Vector3(p.x, 0.0, p.z)
+	# フォールバック(隅などで内側候補が出なかった時): 中心方向へ min_r 離し境界内へ
+	var to_center := Vector3(-origin.x, 0.0, -origin.z)
+	var dir := to_center.normalized() if to_center.length() > 0.01 else Vector3(0, 0, -1)
+	var fp := origin + dir * min_r
+	return Vector3(clampf(fp.x, -bx, bx), 0.0, clampf(fp.z, -bz, bz))
 
 
 ## --- 入力 ---

@@ -45,7 +45,8 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _radius() -> float:
-	return maxf(0.2, size * 0.4)
+	# プレイヤーのフン球と同じ式(Dung Growth の Size to Scale)に合わせる。
+	return maxf(0.2, size * Config.balance.size_to_scale)
 
 
 func _build_visual() -> void:
