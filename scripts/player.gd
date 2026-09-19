@@ -1,8 +1,9 @@
 class_name Player
 extends CharacterBody3D
 ## プレイヤー(フンコロガシ)。フン球を転がして移動し、接触でサイズが増える。
-## 突進(DASH_WINDUP/DASHING)とドロップ処理は Phase I3 で実装。
-## 本フェーズ(B)は「移動」と「サイズ成長」まで。
+## 突進: ROLLING→DASH_WINDUP(前隙)→DASHING→(判定)→STUNNED。
+##   壁=自滅 / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
+##   被弾・自滅で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
 
 signal size_changed(player_id: int, size: float)
 signal dashed(player_id: int)
@@ -21,9 +22,12 @@ const PLAYER_COLORS := [
 const LEFT_JOYCON_ROT := 270.0
 const RIGHT_JOYCON_ROT := 90.0
 const STICK_DEADZONE := 0.2
-## 突進ボタン(結合ペア): 左ジョイコン=13(DpadLeft) / 右ジョイコン=3(Y)。I3で使用。
-const LEFT_DASH_BUTTON := 13
+## 突進ボタン(結合ペア): 左ジョイコン=12(DpadDown) / 右ジョイコン=3(Y)。
+const LEFT_DASH_BUTTON := 12
 const RIGHT_DASH_BUTTON := 3
+## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
+const ARROWS_DASH_KEY := KEY_SLASH
+const WASD_DASH_KEY := KEY_SHIFT
 
 @export var player_id: int = 0
 @export var input_device: int = -1     ## -1=キーボード矢印 / -2=WASD / 0..=Joy-Conデバイスid / その他=待機
@@ -35,32 +39,50 @@ var size: float = 1.0
 var facing: Vector3 = Vector3(0, 0, -1)
 var state: State = State.ROLLING
 
+var _dash_dir := Vector3(0, 0, -1)
+var _windup_t := 0.0
+var _dash_t := 0.0
+var _stun_t := 0.0
+var _cd_t := 0.0            ## 突進クールタイム残り
+var _kb_vel := Vector3.ZERO ## ノックバック速度(相打ち時)
+var _kb_t := 0.0
+var _dash_prev := false     ## 突進ボタンの前フレーム状態(押下エッジ検出)
+var _slow_t := 0.0          ## オランウータン直撃の軽スロウ残り
+var _slow_factor := 1.0
+
 var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
 var _ball_shape: SphereShape3D
 var _beetle: MeshInstance3D
+var _beetle_mat: StandardMaterial3D
 
 
 func _ready() -> void:
+	add_to_group("player") # オランウータンの直撃判定などで参照
 	size = initial_size if initial_size > 0.0 else Config.balance.size_start
 	_build_visual()
 	_apply_size_visual()
 
 
 func _physics_process(delta: float) -> void:
-	if state != State.ROLLING:
-		return
-	var iv := _read_move()
-	var dir := Vector3(iv.x, 0.0, iv.y)
-	if dir.length() > 0.15:
-		dir = dir.normalized()
-		facing = dir
-		velocity = dir * Config.balance.move_speed_base
-	else:
-		velocity = Vector3.ZERO
-	move_and_slide()
+	if _cd_t > 0.0:
+		_cd_t -= delta
+	if _slow_t > 0.0:
+		_slow_t -= delta
+	var dash_now := _dash_input_held()
+	match state:
+		State.ROLLING:
+			_process_rolling(delta)
+			if dash_now and not _dash_prev and _cd_t <= 0.0:
+				_start_dash()
+		State.DASH_WINDUP:
+			_process_windup(delta)
+		State.DASHING:
+			_process_dashing(delta)
+		State.STUNNED:
+			_process_stunned(delta)
+	_dash_prev = dash_now
 	position.y = _radius()
-	_roll_ball(delta)
 	_update_beetle()
 
 
@@ -86,11 +108,157 @@ func add_size(amount: float) -> void:
 	size_changed.emit(player_id, size)
 
 
-func drop_and_stun(_is_self_crash: bool) -> void:
-	pass # Phase I3 で実装(50%ドロップ＋スタン)
+## オランウータンのフン直撃効果。切替可(0=ボーナス+スロウ / 1=ボーナスのみ / 2=スロウのみ)。
+func apply_orangutan_hit() -> void:
+	var eff: int = Config.balance.orangutan_hit_effect
+	if eff != 2: # SlowOnly以外 → ボーナス
+		add_size(Config.balance.orangutan_bonus_size)
+	if eff != 1: # BonusOnly以外 → 軽スロウ
+		_slow_factor = Config.balance.orangutan_slow_factor
+		_slow_t = Config.balance.orangutan_slow_time
 
 
-## --- 内部 ---
+func _current_slow() -> float:
+	return _slow_factor if _slow_t > 0.0 else 1.0
+
+
+func body_radius() -> float:
+	return _radius()
+
+
+## 保有フンの drop_ratio 分を地面に分裂ドロップし、スタン状態に入る。
+func drop_and_stun(_is_self_crash: bool = false) -> void:
+	var total: float = size * Config.balance.drop_ratio
+	if total > 0.0:
+		size -= total
+		_apply_size_visual()
+		size_changed.emit(player_id, size)
+		_scatter_drops(total)
+	_enter_stun()
+
+
+## --- 突進 ---
+
+func _start_dash() -> void:
+	state = State.DASH_WINDUP
+	_windup_t = Config.balance.dash_windup
+	_dash_dir = facing
+	velocity = Vector3.ZERO
+	_cd_t = Config.balance.dash_cooldown
+	dashed.emit(player_id)
+
+
+func _process_windup(_delta: float) -> void:
+	velocity = Vector3.ZERO
+	_windup_t -= _delta
+	if _windup_t <= 0.0:
+		state = State.DASHING
+		_dash_t = 0.0
+
+
+func _process_dashing(delta: float) -> void:
+	_dash_t += delta
+	velocity = _dash_dir * Config.balance.dash_speed # 転がし演出用
+	var motion := _dash_dir * Config.balance.dash_speed * delta
+	var col := move_and_collide(motion)
+	if col != null:
+		var other := col.get_collider()
+		if other is Player:
+			_resolve_dash_contact(other as Player)
+		elif other is Node and (other as Node).is_in_group("wall"):
+			drop_and_stun(true) # 壁激突=自滅
+		else:
+			_end_dash() # 想定外の障害物はそのまま停止
+	elif _dash_t >= Config.balance.dash_max_time:
+		_end_dash() # 保険(通常は壁かプレイヤーに当たる)
+	_roll_ball(delta)
+
+
+func _resolve_dash_contact(victim: Player) -> void:
+	if victim.state == State.DASHING:
+		# 相打ち: 両者ノックバック+両者ドロップ
+		var away := global_position - victim.global_position
+		away.y = 0.0
+		away = away.normalized() if away.length() > 0.01 else -_dash_dir
+		_apply_knockback(away)
+		victim._apply_knockback(-away)
+		drop_and_stun()
+		victim.drop_and_stun()
+	else:
+		# 命中: 相手だけドロップ+スタン、自分は無傷
+		victim.drop_and_stun()
+		dash_hit.emit(player_id, victim.player_id)
+		_end_dash()
+
+
+func _apply_knockback(dir: Vector3) -> void:
+	_kb_vel = dir.normalized() * Config.balance.dash_knockback_speed
+	_kb_t = Config.balance.dash_knockback_time
+
+
+func _end_dash() -> void:
+	state = State.ROLLING
+	velocity = Vector3.ZERO
+
+
+func _enter_stun() -> void:
+	state = State.STUNNED
+	_stun_t = Config.balance.stun_duration
+	velocity = Vector3.ZERO
+
+
+func _process_stunned(delta: float) -> void:
+	_stun_t -= delta
+	if _kb_t > 0.0:
+		_kb_t -= delta
+		move_and_collide(_kb_vel * delta)
+	if _stun_t <= 0.0:
+		state = State.ROLLING
+
+
+func _scatter_drops(total: float) -> void:
+	var container := get_tree().get_first_node_in_group("dung_container")
+	if container == null:
+		container = get_parent()
+	if container == null:
+		return
+	var n: int = maxi(1, Config.balance.drop_scatter_count)
+	var each: float = total / float(n)
+	var ready_at: float = Time.get_ticks_msec() / 1000.0 + Config.balance.stun_duration
+	for i in n:
+		var pk := DungPickup.create(each, player_id)
+		pk.collectible_at = ready_at # 自分はスタン明けまで回収不可
+		container.add_child(pk)
+		var ang: float = TAU * float(i) / float(n) + randf() * 0.6
+		var r: float = Config.balance.drop_scatter_radius
+		pk.global_position = global_position + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
+
+
+## --- 入力 ---
+
+func _process_rolling(delta: float) -> void:
+	var iv := _read_move()
+	var dir := Vector3(iv.x, 0.0, iv.y)
+	if dir.length() > 0.15:
+		dir = dir.normalized()
+		facing = dir
+		velocity = dir * Config.balance.move_speed_base * _current_slow()
+	else:
+		velocity = Vector3.ZERO
+	move_and_slide()
+	_roll_ball(delta)
+
+
+func _dash_input_held() -> bool:
+	if input_device == -1:
+		return Input.is_key_pressed(ARROWS_DASH_KEY)
+	elif input_device == -2:
+		return Input.is_key_pressed(WASD_DASH_KEY)
+	elif input_device >= 0 and input_device < 9000:
+		var btn: int = RIGHT_DASH_BUTTON if input_stick == 1 else LEFT_DASH_BUTTON
+		return Input.is_joy_button_pressed(input_device, btn)
+	return false
+
 
 func _read_move() -> Vector2:
 	var v := Vector2.ZERO
@@ -125,6 +293,8 @@ func _wasd_vector() -> Vector2:
 	return Vector2(x, y)
 
 
+## --- 見た目 ---
+
 func _radius() -> float:
 	return maxf(0.2, size * Config.balance.size_to_scale)
 
@@ -149,9 +319,9 @@ func _build_visual() -> void:
 	var bmesh := BoxMesh.new()
 	bmesh.size = Vector3(0.7, 0.3, 0.9)
 	_beetle.mesh = bmesh
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = col
-	_beetle.material_override = bmat
+	_beetle_mat = StandardMaterial3D.new()
+	_beetle_mat.albedo_color = col
+	_beetle.material_override = _beetle_mat
 	add_child(_beetle)
 
 
@@ -167,6 +337,19 @@ func _apply_size_visual() -> void:
 func _update_beetle() -> void:
 	var r := _radius()
 	_beetle.position = -facing * (r + 0.35) + Vector3(0, -r + 0.15, 0)
+	if _beetle_mat != null:
+		_beetle_mat.albedo_color = _state_tint()
+
+
+## 状態に応じた本体の色。前隙=白で予備動作を予告 / スタン=灰。
+func _state_tint() -> Color:
+	match state:
+		State.DASH_WINDUP:
+			return Color(1, 1, 1)
+		State.STUNNED:
+			return Color(0.4, 0.4, 0.4)
+		_:
+			return PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
 
 
 func _roll_ball(delta: float) -> void:
