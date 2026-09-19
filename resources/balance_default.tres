@@ -1,6 +1,12 @@
-[gd_resource type="Resource" script_class="BalanceConfig" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BalanceConfig" format=3 uid="uid://b4ietusci5hnb"]
 
-[ext_resource type="Script" path="res://scripts/balance_config.gd" id="1_balance"]
+[ext_resource type="Script" uid="uid://qxb43s3q3d2e" path="res://scripts/balance_config.gd" id="1_balance"]
 
 [resource]
 script = ExtResource("1_balance")
+size_start = 10.0
+size_gain_per_pickup = 0.001
+size_max = 60.0
+size_to_scale = 0.05
+drop_scatter_radius = 7.0
+raptor_speed = 15.0
