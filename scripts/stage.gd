@@ -2,7 +2,7 @@ extends Node3D
 ## ステージ: 長方形の床 + 周囲4壁 + 全体俯瞰カメラ + ライト。
 ## すべてコード生成(primitivesのみ)。壁は "wall" グループに入れる(突進の壁判定用)。
 
-const STAGE_SIZE := Vector2(24.0, 16.0)  ## 内寸 (x, z)
+const STAGE_SIZE := Vector2(36.0, 24.0)  ## 内寸 (x, z)。1.5倍。※player/animalの境界と一致必須
 const WALL_HEIGHT := 2.0
 const WALL_THICK := 0.6
 const FLOOR_THICK := 0.5
@@ -64,7 +64,7 @@ func _build_camera() -> void:
 	var cam := Camera3D.new()
 	cam.name = "Camera3D"
 	add_child(cam)
-	cam.position = Vector3(0, 22, 15)
+	cam.position = Vector3(0, 26.49, 14.08) # 中心から半径≈30・角度62°の見下ろし(円周上で角度のみ調整)
 	cam.look_at(Vector3.ZERO, Vector3.UP)
 	cam.fov = 60.0
 

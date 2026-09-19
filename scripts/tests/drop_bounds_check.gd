@@ -17,7 +17,7 @@ func _ready() -> void:
 	p.player_id = 0
 	p.input_device = 9999
 	add_child(p)
-	p.global_position = Vector3(11.0, 0, 5.0) # 東の壁ぎわ
+	p.global_position = Vector3(17.0, 0, 8.0) # 東の壁ぎわ(アリーナ18x12)
 	p.facing = Vector3(1, 0, 0)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -35,7 +35,7 @@ func _ready() -> void:
 		if c is DungPickup:
 			count += 1
 			var pos: Vector3 = c.global_position
-			if absf(pos.x) > 12.01 or absf(pos.z) > 8.01:
+			if absf(pos.x) > 18.01 or absf(pos.z) > 12.01:
 				all_inside = false
 			var dist := Vector2(pos.x - origin.x, pos.z - origin.z).length()
 			nearest = minf(nearest, dist)

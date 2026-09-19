@@ -7,7 +7,7 @@ signal time_changed(time_left: float)
 signal match_ended(results: Array)
 
 const SPAWN_SPOTS := [
-	Vector3(-6, 0, -4), Vector3(6, 0, -4), Vector3(-6, 0, 4), Vector3(6, 0, 4),
+	Vector3(-9, 0, -6), Vector3(9, 0, -6), Vector3(-9, 0, 6), Vector3(9, 0, 6),
 ]
 
 var players: Array[Player] = []

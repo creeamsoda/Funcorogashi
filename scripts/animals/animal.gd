@@ -3,8 +3,8 @@ extends Node3D
 ## 動物の共通基底。ステージ内寸(HX,HZ)とドロップ処理を持つ。
 ## ドロップは group "dung_container" のノードへ生成(無ければ自分の親)。
 
-const HX := 12.0
-const HZ := 8.0
+const HX := 18.0
+const HZ := 12.0
 
 func drop_pickup(world_pos: Vector3, sz: float) -> void:
 	var parent := _dung_parent()

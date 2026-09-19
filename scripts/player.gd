@@ -29,8 +29,8 @@ const RIGHT_DASH_BUTTON := 3
 const ARROWS_DASH_KEY := KEY_SLASH
 const WASD_DASH_KEY := KEY_SHIFT
 ## アリーナ内寸(Stage.STAGE_SIZE の半分に一致)。ドロップを場外に出さないために使用。
-const ARENA_HX := 12.0
-const ARENA_HZ := 8.0
+const ARENA_HX := 18.0
+const ARENA_HZ := 12.0
 const DROP_MARGIN := 0.6
 
 @export var player_id: int = 0
