@@ -47,7 +47,7 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _radius() -> float:
-	return maxf(0.2, Config.balance.visual_size(size) * Config.balance.pickup_size_to_scale)
+	return Config.balance.radius_for_size(size, Config.balance.pickup_size_to_scale)
 
 
 func _build_visual() -> void:

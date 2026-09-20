@@ -34,6 +34,8 @@ func _ready() -> void:
 	var old_player_scale: float = Config.balance.size_to_scale
 	var old_pickup_scale: float = Config.balance.pickup_size_to_scale
 	var old_visual_mode: int = Config.balance.size_visual_mode
+	var old_radius_max: float = Config.balance.visual_radius_max
+	Config.balance.visual_radius_max = 0.0
 	Config.balance.size_visual_mode = 0
 	Config.balance.size_to_scale = 0.05
 	Config.balance.pickup_size_to_scale = 0.4
@@ -63,28 +65,35 @@ func _ready() -> void:
 	var player_log_ok := is_equal_approx(
 		player._radius(), maxf(0.2, log_amount * Config.balance.size_to_scale))
 
-	# 表示モードにかかわらず内部サイズの増加量は変化しない。
-	var old_cap: float = Config.balance.size_max
-	Config.balance.size_max = 0.0
+	# 半径上限はプレイヤーと地面フンの見た目だけを制限する。
+	Config.balance.visual_radius_max = 0.6
+	Config.balance.size_to_scale = 1.0
+	Config.balance.pickup_size_to_scale = 1.0
+	var radius_cap_ok := is_equal_approx(player._radius(), 0.6) \
+		and is_equal_approx(scale_probe._radius(), 0.6)
+
+	# 表示モードや半径上限にかかわらず内部サイズの増加量は制限されない。
 	var logical_before := player.size
 	player.add_size(0.25)
 	var logical_growth_ok := is_equal_approx(player.size, logical_before + 0.25)
-	Config.balance.size_max = old_cap
 
 	scale_probe.free()
 	Config.balance.size_to_scale = old_player_scale
 	Config.balance.pickup_size_to_scale = old_pickup_scale
 	Config.balance.size_visual_mode = old_visual_mode
+	Config.balance.visual_radius_max = old_radius_max
 
 	var volume_ok := volume_formula_ok and pickup_volume_ok and player_volume_ok
 	var log_ok := log_start_ok and log_curve_ok and pickup_log_ok and player_log_ok
 	var ok: bool = got.hit and gain_ok and player_drop_ok and scale_ok and volume_ok and log_ok \
+		and radius_cap_ok \
 		and logical_growth_ok \
 		and not is_instance_valid(pickup)
 	print("[pickup_check] result=", ("PASS" if ok else "FAIL"),
 		" collected=", got.hit, " size ", before, " -> ", player.size,
 		" animal_gain=", gain_ok, " player_drop_full_amount=", player_drop_ok,
 		" scale_independent=", scale_ok, " volume_visual=", volume_ok,
-		" log_visual=", log_ok, " logical_growth=", logical_growth_ok,
+		" log_visual=", log_ok, " radius_cap=", radius_cap_ok,
+		" logical_growth=", logical_growth_ok,
 		" pickup_freed=", not is_instance_valid(pickup))
 	get_tree().quit(0 if ok else 1)

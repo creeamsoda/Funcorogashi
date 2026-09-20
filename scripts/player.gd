@@ -109,9 +109,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func add_size(amount: float) -> void:
 	size += amount
-	var cap: float = Config.balance.size_max
-	if cap > 0.0:
-		size = minf(size, cap)
 	_apply_size_visual()
 	size_changed.emit(player_id, size)
 
@@ -140,14 +137,17 @@ func set_crown_visible(show: bool) -> void:
 		_crown.visible = show
 
 
-## 保有フンの drop_ratio 分を地面に分裂ドロップし、スタン状態に入る。
+## 保有フンの drop_ratio 分を切り離し、lossを除いた量を地面に分裂ドロップしてスタンする。
 func drop_and_stun(_is_self_crash: bool = false) -> void:
-	var total: float = size * Config.balance.drop_ratio
-	if total > 0.0:
-		size -= total
+	var detached: float = size * clampf(Config.balance.drop_ratio, 0.0, 1.0)
+	if detached > 0.0:
+		size -= detached
 		_apply_size_visual()
 		size_changed.emit(player_id, size)
-		_scatter_drops(total)
+		var loss_ratio := clampf(Config.balance.drop_loss_ratio, 0.0, 1.0)
+		var ground_amount := detached * (1.0 - loss_ratio)
+		if ground_amount > 0.0:
+			_scatter_drops(ground_amount)
 	_enter_stun()
 
 
@@ -328,7 +328,7 @@ func _wasd_vector() -> Vector2:
 ## --- 見た目 ---
 
 func _radius() -> float:
-	return maxf(0.2, Config.balance.visual_size(size) * Config.balance.size_to_scale)
+	return Config.balance.radius_for_size(size, Config.balance.size_to_scale)
 
 
 func _build_visual() -> void:

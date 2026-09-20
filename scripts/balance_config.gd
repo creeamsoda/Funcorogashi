@@ -14,8 +14,8 @@ extends Resource
 @export var size_start: float = 1.0                ## 開始サイズ
 @export var size_gain_per_pickup: float = 0.5      ## 動物由来の地面フン実量に掛ける獲得倍率
 @export var size_log_strength: float = 1.0         ## Logarithmicの曲線強度(大きいほど半径の伸びを抑える)
-@export var size_max: float = 0.0                  ## サイズ上限(0 = 無制限)
 @export var size_to_scale: float = 0.5             ## サイズ→見た目scale係数(球半径 = size * これ)
+@export var visual_radius_max: float = 0.0         ## 表示半径の上限(m)。0 = 無制限。内部サイズ/スコアは制限しない
 
 
 ## 内部サイズを見た目用サイズへ変換する。スコアや獲得量には影響しない。
@@ -32,6 +32,13 @@ func visual_size(amount: float) -> float:
 		_:
 			return amount
 
+
+func radius_for_size(amount: float, scale: float) -> float:
+	var radius := maxf(0.2, visual_size(amount) * scale)
+	if visual_radius_max > 0.0:
+		radius = minf(radius, visual_radius_max)
+	return radius
+
 @export_group("Movement")
 @export var move_speed_base: float = 6.0           ## 基本移動速度(m/s)
 @export var move_speed_size_penalty: float = 0.0   ## サイズ連動の減速(0 = 無効。MVP既定オフ)
@@ -46,7 +53,8 @@ func visual_size(amount: float) -> float:
 @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
 
 @export_group("Drop & Pickup")
-@export var drop_ratio: float = 0.5                ## 被弾/自滅時のドロップ割合
+@export var drop_ratio: float = 0.5                ## 被弾/自滅時に本体から切り離す割合
+@export_range(0.0, 1.0, 0.01) var drop_loss_ratio: float = 0.0 ## 切り離した量のうち地面に残らず消失する割合
 @export var drop_scatter_count: int = 4            ## 1回の分裂ドロップ個数
 @export var drop_scatter_radius: float = 2.0       ## 散らばり半径の最大(m)
 @export var drop_scatter_min_radius: float = 2.0   ## 散らばり半径の最小(m)。本人の直近に落とさない

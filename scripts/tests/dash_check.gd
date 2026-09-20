@@ -14,10 +14,12 @@ func _ready() -> void:
 	var r_hit := await _test_hit()
 	var r_wall := await _test_wall()
 	var r_mutual := await _test_mutual()
+	var r_loss := await _test_drop_loss()
 
-	var ok := r_hit and r_wall and r_mutual
+	var ok := r_hit and r_wall and r_mutual and r_loss
 	print("[dash_check] result=", ("PASS" if ok else "FAIL"),
-		"  hit=", r_hit, " self_crash=", r_wall, " mutual=", r_mutual)
+		"  hit=", r_hit, " self_crash=", r_wall, " mutual=", r_mutual,
+		" drop_loss=", r_loss)
 	get_tree().quit(0 if ok else 1)
 
 
@@ -73,6 +75,37 @@ func _test_mutual() -> bool:
 	print("  [mutual] a ", a0, "->", a.size, " b ", b0, "->", b.size,
 		" states=", a.state, "/", b.state)
 	_free([a, b])
+	await _frames(2)
+	return ok
+
+
+func _test_drop_loss() -> bool:
+	for child in _dung.get_children():
+		child.queue_free()
+	await _frames(2)
+	var old_drop_ratio: float = Config.balance.drop_ratio
+	var old_loss_ratio: float = Config.balance.drop_loss_ratio
+	var old_count: int = Config.balance.drop_scatter_count
+	Config.balance.drop_ratio = 0.5
+	Config.balance.drop_loss_ratio = 0.25
+	Config.balance.drop_scatter_count = 4
+	var p := _mk(0, Vector3.ZERO, Vector3(1, 0, 0))
+	await _frames(2)
+	p.size = 8.0
+	p._apply_size_visual()
+	p.drop_and_stun()
+	await _frames(2)
+	var ground_total := 0.0
+	for child in _dung.get_children():
+		if child is DungPickup:
+			ground_total += (child as DungPickup).size
+	var ok := is_equal_approx(p.size, 4.0) and is_equal_approx(ground_total, 3.0)
+	print("  [drop_loss] player=", p.size, " ground=", ground_total,
+		" permanently_lost=", 8.0 - p.size - ground_total)
+	Config.balance.drop_ratio = old_drop_ratio
+	Config.balance.drop_loss_ratio = old_loss_ratio
+	Config.balance.drop_scatter_count = old_count
+	_free([p])
 	await _frames(2)
 	return ok
 
