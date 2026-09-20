@@ -101,16 +101,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if input_device >= 0:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
-		add_size(Config.balance.size_gain_per_pickup)
+		# 標準サイズ1.0の動物フンを拾った場合の疑似成長。
+		add_size(Config.balance.animal_dung_amount_multiplier * Config.balance.size_gain_per_pickup)
 
 
 ## --- 公開API(契約 §6-2) ---
 
 func add_size(amount: float) -> void:
-	if Config.balance.size_growth_mode == 1: # Log
-		size += amount * Config.balance.size_log_scale / (1.0 + size)
-	else: # Linear
-		size += amount
+	size += amount
 	var cap: float = Config.balance.size_max
 	if cap > 0.0:
 		size = minf(size, cap)
@@ -330,7 +328,7 @@ func _wasd_vector() -> Vector2:
 ## --- 見た目 ---
 
 func _radius() -> float:
-	return maxf(0.2, size * Config.balance.size_to_scale)
+	return maxf(0.2, Config.balance.visual_size(size) * Config.balance.size_to_scale)
 
 
 func _build_visual() -> void:

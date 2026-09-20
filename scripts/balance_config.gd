@@ -10,12 +10,27 @@ extends Resource
 @export var player_count: int = 4                  ## 同時プレイ人数
 
 @export_group("Dung Growth")
-@export_enum("Linear", "Log") var size_growth_mode: int = 0  ## サイズの伸び方
+@export_enum("Linear", "VolumeBased", "Logarithmic") var size_visual_mode: int = 0  ## 内部サイズから見た目半径を求める方式
 @export var size_start: float = 1.0                ## 開始サイズ
-@export var size_gain_per_pickup: float = 0.5      ## 取り込み1回の増加量(線形時)
-@export var size_log_scale: float = 1.0            ## 対数モード時の係数
+@export var size_gain_per_pickup: float = 0.5      ## 動物由来の地面フン実量に掛ける獲得倍率
+@export var size_log_strength: float = 1.0         ## Logarithmicの曲線強度(大きいほど半径の伸びを抑える)
 @export var size_max: float = 0.0                  ## サイズ上限(0 = 無制限)
 @export var size_to_scale: float = 0.5             ## サイズ→見た目scale係数(球半径 = size * これ)
+
+
+## 内部サイズを見た目用サイズへ変換する。スコアや獲得量には影響しない。
+## size_start時の見た目をLinearと一致させるため、どちらの曲線も開始サイズを基準に正規化する。
+func visual_size(amount: float) -> float:
+	var reference := maxf(size_start, 0.001)
+	var ratio := maxf(amount, 0.0) / reference
+	match size_visual_mode:
+		1: # VolumeBased: 内部サイズを体積とみなし、半径を立方根で求める。
+			return reference * pow(ratio, 1.0 / 3.0)
+		2: # Logarithmic: 0と開始サイズを固定した正規化対数曲線。
+			var strength := maxf(size_log_strength, 0.0001)
+			return reference * log(1.0 + strength * ratio) / log(1.0 + strength)
+		_:
+			return amount
 
 @export_group("Movement")
 @export var move_speed_base: float = 6.0           ## 基本移動速度(m/s)
@@ -35,6 +50,7 @@ extends Resource
 @export var drop_scatter_count: int = 4            ## 1回の分裂ドロップ個数
 @export var drop_scatter_radius: float = 2.0       ## 散らばり半径の最大(m)
 @export var drop_scatter_min_radius: float = 2.0   ## 散らばり半径の最小(m)。本人の直近に落とさない
+@export var pickup_size_to_scale: float = 0.5      ## 地面フンのサイズ→見た目倍率(プレイヤーのsize_to_scaleとは別)
 @export var pickup_collect_radius: float = 0.4     ## 回収判定の追加余裕(m)
 @export var pickup_despawn_enabled: bool = false   ## 地面フンの自然消滅(既定オフ)
 @export var pickup_despawn_time: float = 10.0      ## 消滅までの秒数
@@ -42,6 +58,7 @@ extends Resource
 @export_group("Animals")
 @export var animal_spawn_interval_min: float = 2.0 ## 出現間隔の下限(秒)
 @export var animal_spawn_interval_max: float = 4.0 ## 出現間隔の上限(秒)
+@export var animal_dung_amount_multiplier: float = 1.0 ## 動物が落とすフンの実量倍率(見た目と獲得量の元になる)
 @export var bird_speed: float = 3.0
 @export var bird_drop_count: int = 3               ## 横断中に落とす個数
 @export var raptor_speed: float = 9.0

@@ -18,8 +18,73 @@ func _ready() -> void:
 	for _i in 4:
 		await get_tree().physics_frame
 
-	var ok: bool = got.hit and player.size > before and not is_instance_valid(pickup)
+	var expected: float = before + 0.5 * Config.balance.size_gain_per_pickup
+	var gain_ok := is_equal_approx(player.size, expected)
+
+	# プレイヤー由来のドロップは動物用倍率を掛けず、実量をそのまま回収する。
+	var player_drop := DungPickup.create(0.5, 1)
+	add_child(player_drop)
+	player_drop.global_position = Vector3.ZERO
+	for _i in 4:
+		await get_tree().physics_frame
+	var player_drop_ok := is_equal_approx(player.size, expected + 0.5) \
+		and not is_instance_valid(player_drop)
+
+	# 地面フンの見た目倍率がプレイヤーの size_to_scale から独立していることを確認。
+	var old_player_scale: float = Config.balance.size_to_scale
+	var old_pickup_scale: float = Config.balance.pickup_size_to_scale
+	var old_visual_mode: int = Config.balance.size_visual_mode
+	Config.balance.size_visual_mode = 0
+	Config.balance.size_to_scale = 0.05
+	Config.balance.pickup_size_to_scale = 0.4
+	var scale_probe := DungPickup.create(2.0, -1)
+	var scale_ok := is_equal_approx(scale_probe._radius(), 0.8)
+
+	# 体積ベースでは内部サイズ8倍→見た目半径2倍。プレイヤーと地面フンの双方に適用する。
+	Config.balance.size_visual_mode = 1
+	var reference := maxf(Config.balance.size_start, 0.001)
+	var volume_amount := reference * 8.0
+	var visual_amount := Config.balance.visual_size(volume_amount)
+	var volume_formula_ok := is_equal_approx(visual_amount, reference * 2.0)
+	scale_probe.size = volume_amount
+	var pickup_volume_ok := is_equal_approx(
+		scale_probe._radius(), maxf(0.2, visual_amount * Config.balance.pickup_size_to_scale))
+	player.size = volume_amount
+	var player_volume_ok := is_equal_approx(
+		player._radius(), maxf(0.2, visual_amount * Config.balance.size_to_scale))
+
+	# 対数表示も開始サイズでLinearと一致し、終盤はVolumeBasedより差が見えやすい曲線になる。
+	Config.balance.size_visual_mode = 2
+	var log_start_ok := is_equal_approx(Config.balance.visual_size(reference), reference)
+	var log_amount := Config.balance.visual_size(volume_amount)
+	var log_curve_ok := log_amount > visual_amount and log_amount < volume_amount
+	var pickup_log_ok := is_equal_approx(
+		scale_probe._radius(), maxf(0.2, log_amount * Config.balance.pickup_size_to_scale))
+	var player_log_ok := is_equal_approx(
+		player._radius(), maxf(0.2, log_amount * Config.balance.size_to_scale))
+
+	# 表示モードにかかわらず内部サイズの増加量は変化しない。
+	var old_cap: float = Config.balance.size_max
+	Config.balance.size_max = 0.0
+	var logical_before := player.size
+	player.add_size(0.25)
+	var logical_growth_ok := is_equal_approx(player.size, logical_before + 0.25)
+	Config.balance.size_max = old_cap
+
+	scale_probe.free()
+	Config.balance.size_to_scale = old_player_scale
+	Config.balance.pickup_size_to_scale = old_pickup_scale
+	Config.balance.size_visual_mode = old_visual_mode
+
+	var volume_ok := volume_formula_ok and pickup_volume_ok and player_volume_ok
+	var log_ok := log_start_ok and log_curve_ok and pickup_log_ok and player_log_ok
+	var ok: bool = got.hit and gain_ok and player_drop_ok and scale_ok and volume_ok and log_ok \
+		and logical_growth_ok \
+		and not is_instance_valid(pickup)
 	print("[pickup_check] result=", ("PASS" if ok else "FAIL"),
 		" collected=", got.hit, " size ", before, " -> ", player.size,
+		" animal_gain=", gain_ok, " player_drop_full_amount=", player_drop_ok,
+		" scale_independent=", scale_ok, " volume_visual=", volume_ok,
+		" log_visual=", log_ok, " logical_growth=", logical_growth_ok,
 		" pickup_freed=", not is_instance_valid(pickup))
 	get_tree().quit(0 if ok else 1)

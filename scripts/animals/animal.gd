@@ -10,7 +10,8 @@ func drop_pickup(world_pos: Vector3, sz: float) -> void:
 	var parent := _dung_parent()
 	if parent == null:
 		return
-	var pk := DungPickup.create(sz)
+	var actual_size := sz * Config.balance.animal_dung_amount_multiplier
+	var pk := DungPickup.create(actual_size)
 	parent.add_child(pk)
 	pk.global_position = Vector3(world_pos.x, 0.0, world_pos.z)
 

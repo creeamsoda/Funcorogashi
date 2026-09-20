@@ -39,14 +39,15 @@ func _on_body_entered(body: Node) -> void:
 	var p := body as Player
 	if owner_id == p.player_id and _now() < collectible_at:
 		return # 自分のドロップはスタン明けまで回収不可
-	p.add_size(size)
-	collected.emit(size)
+	# 動物由来(ownerなし)は実量に獲得倍率を掛ける。プレイヤーが落としたフンは実量を保持する。
+	var gain: float = size * Config.balance.size_gain_per_pickup if owner_id < 0 else size
+	p.add_size(gain)
+	collected.emit(gain)
 	queue_free()
 
 
 func _radius() -> float:
-	# プレイヤーのフン球と同じ式(Dung Growth の Size to Scale)に合わせる。
-	return maxf(0.2, size * Config.balance.size_to_scale)
+	return maxf(0.2, Config.balance.visual_size(size) * Config.balance.pickup_size_to_scale)
 
 
 func _build_visual() -> void:

@@ -4,8 +4,10 @@
 
 [resource]
 script = ExtResource("1_balance")
+size_visual_mode = 2
 size_start = 10.0
 size_gain_per_pickup = 0.001
+size_log_strength = 1.0
 size_max = 60.0
 size_to_scale = 0.05
 drop_scatter_radius = 7.0
