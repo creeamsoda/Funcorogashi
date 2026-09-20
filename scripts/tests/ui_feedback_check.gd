@@ -36,24 +36,88 @@ func _test_crown() -> bool:
 
 
 func _test_windup_blink() -> bool:
-	var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
+	var player_scene := load("res://scenes/Player.tscn") as PackedScene
+	var p := player_scene.instantiate() as Player
 	p.input_device = 9999
 	add_child(p)
+	p.set_physics_process(false)
+	var other := player_scene.instantiate() as Player
+	other.player_id = 1
+	other.input_device = 9999
+	add_child(other)
+	other.set_physics_process(false)
+	other.position.x = 6.0
 	await get_tree().process_frame
 	var ball := p.get_node("DungBall") as MeshInstance3D
-	var beetle := p.get_node("Beetle") as MeshInstance3D
+	var materials := _beetle_materials(p)
+	var other_materials := _beetle_materials(other)
+	var original_colors: Array[Color] = []
+	var original_textures: Array[Texture2D] = []
+	var other_colors: Array[Color] = []
+	var independent := not materials.is_empty() and materials.size() == other_materials.size()
+	for mat in materials:
+		original_colors.append(mat.albedo_color)
+		original_textures.append(mat.albedo_texture)
+		for other_mat in other_materials:
+			independent = independent and mat != other_mat
+	for mat in other_materials:
+		other_colors.append(mat.albedo_color)
+	var shell := p.get_node("Beetle").find_child("WingShell", true, false) as MeshInstance3D
+	var other_shell := other.get_node("Beetle").find_child("WingShell", true, false) as MeshInstance3D
+	var player_colors := shell != null and other_shell != null
+	if player_colors:
+		player_colors = not (shell.get_active_material(0) as StandardMaterial3D).albedo_color.is_equal_approx(
+			(other_shell.get_active_material(0) as StandardMaterial3D).albedo_color)
+
 	p._start_dash()
-	var ball_flashes := false
-	var beetle_flashes := false
-	for _i in 12:
-		await get_tree().create_timer(0.02).timeout
-		var ball_color: Color = (ball.material_override as StandardMaterial3D).albedo_color
-		var beetle_color: Color = (beetle.material_override as StandardMaterial3D).albedo_color
-		ball_flashes = ball_flashes or ball_color.is_equal_approx(Player.WINDUP_FLASH_COLOR)
-		beetle_flashes = beetle_flashes or beetle_color.is_equal_approx(Player.WINDUP_FLASH_COLOR)
+	p._windup_t = Player.WINDUP_FLASH_INTERVAL * 0.5
+	p._update_beetle()
+	var ball_flashes := (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.WINDUP_FLASH_COLOR)
+	var beetle_flashes := not materials.is_empty()
+	var other_unchanged := true
+	for mat in materials:
+		beetle_flashes = beetle_flashes and mat.albedo_color.is_equal_approx(Player.WINDUP_FLASH_COLOR)
+	for i in other_materials.size():
+		other_unchanged = other_unchanged and other_materials[i].albedo_color.is_equal_approx(other_colors[i])
+
+	p._windup_t = Player.WINDUP_FLASH_INTERVAL * 1.5
+	p._update_beetle()
+	var blink_restores := _materials_restored(materials, original_colors, original_textures) \
+		and (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.DUNG_COLOR)
+	p._windup_t = Player.WINDUP_FLASH_INTERVAL * 0.5
+	p._update_beetle()
+	p._end_dash()
+	p._update_beetle()
+	var dash_restores := _materials_restored(materials, original_colors, original_textures)
+	print("  [windup_blink] surfaces=", materials.size(), " all_flash=", beetle_flashes,
+		" ball=", ball_flashes, " independent=", independent, " player_colors=", player_colors,
+		" other_unchanged=", other_unchanged, " blink_restore=", blink_restores,
+		" dash_restore=", dash_restores)
 	p.queue_free()
+	other.queue_free()
 	await get_tree().process_frame
-	return ball_flashes and beetle_flashes
+	return ball_flashes and beetle_flashes and independent and player_colors \
+		and other_unchanged and blink_restores and dash_restores
+
+
+func _beetle_materials(player: Player) -> Array[StandardMaterial3D]:
+	var materials: Array[StandardMaterial3D] = []
+	for node in player.get_node("Beetle").find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface in mesh_instance.mesh.get_surface_count():
+			var mat := mesh_instance.get_active_material(surface) as StandardMaterial3D
+			if mat == null:
+				push_error("Beetle surface has no StandardMaterial3D: %s[%d]" % [node.name, surface])
+				return []
+			materials.append(mat)
+	return materials
+
+
+func _materials_restored(materials: Array[StandardMaterial3D], colors: Array[Color], textures: Array[Texture2D]) -> bool:
+	for i in materials.size():
+		if not materials[i].albedo_color.is_equal_approx(colors[i]) or materials[i].albedo_texture != textures[i]:
+			return false
+	return not materials.is_empty()
 
 
 func _test_landing_preview() -> bool:

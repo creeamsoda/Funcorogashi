@@ -18,6 +18,15 @@ enum State { ROLLING, DASH_WINDUP, DASHING, STUNNED }
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
 const WINDUP_FLASH_INTERVAL := 0.08
+const BEETLE_SCENE: PackedScene = preload("res://resources/models/beetle/beetle.glb")
+## 仮キューブの全長0.9を基準に、脚を含むモデル全長を約1.2倍にする。
+const BEETLE_REFERENCE_LENGTH := 0.9
+const BEETLE_VISUAL_SIZE_RATIO := 1.2
+## 初期の12度姿勢でサイズを合わせ、傾きの調整でモデル自体が拡大しないようにする。
+const BEETLE_SIZE_REFERENCE_DEGREES := 12.0
+const BEETLE_HEAD_DOWN_DEGREES := 45.0
+## 球の外接矩形へ少し入れ、球面に腹側を近づける。
+const BEETLE_BALL_GAP := -0.10
 
 const HIT_SE: AudioStream = preload("res://resources/audio/hit.wav")
 const WALL_HIT_SE: AudioStream = preload("res://resources/audio/wallHit.wav")
@@ -69,8 +78,12 @@ var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
 var _ball_mat: StandardMaterial3D
 var _ball_shape: SphereShape3D
-var _beetle: MeshInstance3D
-var _beetle_mat: StandardMaterial3D
+var _beetle: Node3D
+var _beetle_model: Node3D
+var _beetle_meshes: Array[MeshInstance3D] = []
+var _beetle_materials: Array[StandardMaterial3D] = []
+var _beetle_base_colors: Array[Color] = []
+var _beetle_rear_extent := 0.0
 var _crown: Label3D
 var _hit_audio: AudioStreamPlayer
 var _wall_hit_audio: AudioStreamPlayer
@@ -488,15 +501,7 @@ func _build_visual() -> void:
 	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 
-	_beetle = MeshInstance3D.new()
-	_beetle.name = "Beetle"
-	var bmesh := BoxMesh.new()
-	bmesh.size = Vector3(0.7, 0.3, 0.9)
-	_beetle.mesh = bmesh
-	_beetle_mat = StandardMaterial3D.new()
-	_beetle_mat.albedo_color = col
-	_beetle.material_override = _beetle_mat
-	add_child(_beetle)
+	_build_beetle_visual(col)
 
 	_crown = Label3D.new()
 	_crown.name = "LeaderCrown"
@@ -513,6 +518,54 @@ func _build_visual() -> void:
 	add_child(_crown)
 
 
+func _build_beetle_visual(player_color: Color) -> void:
+	_beetle = Node3D.new()
+	_beetle.name = "Beetle"
+	add_child(_beetle)
+	_beetle_model = BEETLE_SCENE.instantiate() as Node3D
+	_beetle_model.name = "Model"
+	_beetle.add_child(_beetle_model)
+	# GLBの頭は-Z、腹は+Z。サイズは基準姿勢で測り、頭下げの角度と分離する。
+	_beetle_model.rotation.x = deg_to_rad(-BEETLE_SIZE_REFERENCE_DEGREES)
+	for node in _beetle_model.find_children("*", "MeshInstance3D", true, false):
+		var part := node as MeshInstance3D
+		_beetle_meshes.append(part)
+		for surface in part.mesh.get_surface_count():
+			# GLBの共有マテリアルを書き換えず、プレイヤーごとに色と点滅を保持する。
+			var mat := part.get_active_material(surface).duplicate() as StandardMaterial3D
+			if mat.resource_name == "Wing_Image":
+				mat.albedo_color = player_color
+			part.set_surface_override_material(surface, mat)
+			_beetle_materials.append(mat)
+			_beetle_base_colors.append(mat.albedo_color)
+	var bounds := _beetle_visual_bounds()
+	var visual_scale := BEETLE_REFERENCE_LENGTH * BEETLE_VISUAL_SIZE_RATIO / bounds.size.z
+	_beetle_model.scale = Vector3.ONE * visual_scale
+	_beetle_model.rotation.x = deg_to_rad(-BEETLE_HEAD_DOWN_DEGREES)
+	bounds = _beetle_visual_bounds()
+	# 傾けた後の足先を地面へ合わせ、腹側の張り出しに応じて球との間隔を取る。
+	_beetle_model.position.y = -bounds.position.y + 0.005
+	_beetle_rear_extent = bounds.end.z
+
+
+## 回転前のBeetleローカル空間で、脚まで含めた実頂点の範囲を測る。
+func _beetle_visual_bounds() -> AABB:
+	var bounds := AABB()
+	var has_point := false
+	for part in _beetle_meshes:
+		var to_beetle := _beetle.global_transform.affine_inverse() * part.global_transform
+		for surface in part.mesh.get_surface_count():
+			var vertices: PackedVector3Array = part.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
+			for vertex in vertices:
+				var point := to_beetle * vertex
+				if not has_point:
+					bounds = AABB(point, Vector3.ZERO)
+					has_point = true
+				else:
+					bounds = bounds.expand(point)
+	return bounds
+
+
 func _apply_size_visual() -> void:
 	var r := _radius()
 	_ball_mesh.radius = r
@@ -526,10 +579,15 @@ func _apply_size_visual() -> void:
 
 func _update_beetle() -> void:
 	var r := _radius()
-	_beetle.position = -facing * (r + 0.35) + Vector3(0, -r + 0.15, 0)
+	var direction := Vector3(facing.x, 0.0, facing.z).normalized()
+	if direction.is_zero_approx():
+		direction = Vector3.FORWARD
+	_beetle.position = -direction * (r + _beetle_rear_extent + BEETLE_BALL_GAP) + Vector3(0, -r, 0)
+	_beetle.rotation.y = atan2(direction.x, direction.z)
 	var flash_on := _windup_flash_on()
-	if _beetle_mat != null:
-		_beetle_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else _state_tint()
+	for i in _beetle_materials.size():
+		var color := _state_tint() if state == State.STUNNED else _beetle_base_colors[i]
+		_beetle_materials[i].albedo_color = WINDUP_FLASH_COLOR if flash_on else color
 	if _ball_mat != null:
 		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else DUNG_COLOR
 
