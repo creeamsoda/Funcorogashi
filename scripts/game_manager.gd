@@ -21,6 +21,12 @@ var _crown_hidden := false
 
 
 func _ready() -> void:
+	for device in Input.get_connected_joypads():
+		if InputRouter.is_combined_joycon(device):
+			push_warning(
+				"[input] Joy-Con device %d is still combined. " % device
+				+ "Restart Godot via tools/start_godot_separate_joycons.cmd."
+			)
 	add_child(load("res://scenes/Stage.tscn").instantiate())
 
 	_dung = Node3D.new()
@@ -49,7 +55,6 @@ func _spawn_players() -> void:
 		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 		p.player_id = i
 		p.input_device = srcs[i]["device"]
-		p.input_stick = srcs[i]["stick"]
 		add_child(p)
 		p.global_position = SPAWN_SPOTS[i % SPAWN_SPOTS.size()]
 		players.append(p)
@@ -64,7 +69,6 @@ func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
 	var srcs := InputRouter.sources(players.size())
 	for i in players.size():
 		players[i].input_device = srcs[i]["device"]
-		players[i].input_stick = srcs[i]["stick"]
 		_log_assignment(players[i])
 
 func _log_assignment(p: Player) -> void:
@@ -74,8 +78,7 @@ func _log_assignment(p: Player) -> void:
 	elif p.input_device == -2:
 		label = "keyboard-WASD"
 	elif p.input_device >= 0 and p.input_device < 9000:
-		var stick := "R" if p.input_stick == 1 else "L"
-		label = "joypad%d-%sstick (%s)" % [p.input_device, stick, Input.get_joy_name(p.input_device)]
+		label = "joypad%d (%s)" % [p.input_device, Input.get_joy_name(p.input_device)]
 	print("[input] P", p.player_id + 1, " (", label, ")")
 
 

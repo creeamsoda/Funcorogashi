@@ -7,19 +7,28 @@ class_name InputRouter
 static func known_pads() -> Array[int]:
 	var pads: Array[int] = []
 	for id in Input.get_connected_joypads():
-		if Input.is_joy_known(id):
+		if Input.is_joy_known(id) and not is_combined_joycon(id):
 			pads.append(id)
 	return pads
 
-## プレイヤーindex -> {device:int, stick:int}
-## 結合ペア(Joy-Con L/R)1台につき、左スティック(stick=0)と右スティック(stick=1)を別ソースにして
-## 2人分に割り当てる。余りはキーボード。
+## SDL既定のL/R結合状態は1人単位の入力・振動に使えないため検出する。
+static func is_combined_joycon(device: int) -> bool:
+	return is_combined_joycon_name(Input.get_joy_name(device))
+
+static func is_combined_joycon_name(device_name: String) -> bool:
+	return "Joy-Con" in device_name and "(L/R)" in device_name
+
+## プレイヤーindex -> {device:int}
+## 横持ちのJoy-Conを個別デバイスとして扱い、1デバイスを1人だけに割り当てる。
+## SDLのJoy-Con自動結合を起動前に無効化し、4人なら4デバイスを公開すること。
 static func sources(n: int) -> Array:
-	var pads := known_pads()
+	return sources_from_pads(n, known_pads())
+
+## 実デバイス列挙と切り離した割当本体。headlessテストから疑似デバイス列で検証できる。
+static func sources_from_pads(n: int, pads: Array[int]) -> Array:
 	var srcs: Array = []
 	for d in pads:
-		srcs.append({"device": d, "stick": 0}) # 左スティック(Lジョイコン)
-		srcs.append({"device": d, "stick": 1}) # 右スティック(Rジョイコン)
+		srcs.append({"device": d})
 	var out: Array = []
 	var kb := 0
 	for i in n:
@@ -31,7 +40,7 @@ static func sources(n: int) -> Array:
 				0: dev = -1 # 矢印
 				1: dev = -2 # WASD
 			kb += 1
-			out.append({"device": dev, "stick": 0})
+			out.append({"device": dev})
 	return out
 
 static func devices(n: int) -> Array[int]:

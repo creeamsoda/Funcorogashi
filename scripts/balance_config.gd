@@ -52,6 +52,11 @@ func radius_for_size(amount: float, scale: float) -> float:
 @export var dash_knockback_speed: float = 8.0      ## 相打ち時ノックバック初速
 @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
 
+@export_group("Joy-Con Vibration")
+@export_range(0.0, 1.0, 0.01) var joy_vibration_weak_magnitude: float = 0.25 ## 低周波側の振動強度
+@export_range(0.0, 1.0, 0.01) var joy_vibration_strong_magnitude: float = 0.4 ## 高周波側の振動強度
+@export_range(0.0, 2.0, 0.01) var joy_vibration_duration: float = 0.16       ## 振動時間(秒)
+
 @export_group("Drop & Pickup")
 @export var drop_ratio: float = 0.5                ## 被弾/自滅時に本体から切り離す割合
 @export_range(0.0, 1.0, 0.01) var drop_loss_ratio: float = 0.0 ## 切り離した量のうち地面に残らず消失する割合
@@ -62,6 +67,8 @@ func radius_for_size(amount: float, scale: float) -> float:
 @export var pickup_collect_radius: float = 0.4     ## 回収判定の追加余裕(m)
 @export var pickup_despawn_enabled: bool = false   ## 地面フンの自然消滅(既定オフ)
 @export var pickup_despawn_time: float = 10.0      ## 消滅までの秒数
+@export var pickup_se_neutral_max: float = 1.2     ## この獲得量までは通常SE(動物フン約2個分)
+@export var pickup_se_high_high_min: float = 2.5   ## この獲得量以上は最大級SE(巨大プレイヤーの分裂フン目安)
 
 @export_group("Animals")
 @export var animal_spawn_interval_min: float = 2.0 ## 出現間隔の下限(秒)

@@ -41,8 +41,20 @@ func _push(s: String) -> void:
 
 func _process(_dt: float) -> void:
 	var pads := Input.get_connected_joypads()
+	var combined: Array[int] = []
+	for id in pads:
+		if InputRouter.is_combined_joycon(id):
+			combined.append(id)
 	var lines: Array[String] = []
 	lines.append("=== INPUT TEST ===  connected joypads: %d   (keyboard: arrows / WASD)" % pads.size())
+	if not combined.is_empty():
+		lines.append("ERROR: Joy-Con is combined (L/R): %s" % str(combined))
+		lines.append("Close Godot and launch tools/start_godot_separate_joycons.cmd")
+	elif pads.size() < 4:
+		lines.append("ERROR: 4 Joy-Cons must appear as 4 separate device ids")
+	else:
+		lines.append("OK: separate Joy-Con devices detected")
+	lines.append("Dash button: BTN %d" % JOY_BUTTON_B)
 	lines.append("[mapped API]")
 	for id in pads:
 		var lx := Input.get_joy_axis(id, JOY_AXIS_LEFT_X)

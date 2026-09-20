@@ -8,12 +8,24 @@ extends CharacterBody3D
 signal size_changed(player_id: int, size: float)
 signal dashed(player_id: int)
 signal dash_hit(attacker_id: int, victim_id: int)
+## 実機振動の発火契機をテスト・演出連携から観測するための通知。
+signal vibration_requested(player_id: int)
+## 共有デバイス上の全プレイヤーが対象ならtrue。一部だけなら誤振動防止のためfalse。
+signal vibration_route_resolved(device: int, allowed: bool)
 
 enum State { ROLLING, DASH_WINDUP, DASHING, STUNNED }
 
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
 const WINDUP_FLASH_INTERVAL := 0.08
+
+const HIT_SE: AudioStream = preload("res://resources/audio/hit.wav")
+const WALL_HIT_SE: AudioStream = preload("res://resources/audio/wallHit.wav")
+const CHARGE_SE: AudioStream = preload("res://resources/audio/charge.wav")
+const DASH_SE: AudioStream = preload("res://resources/audio/dash.wav")
+const GET_NEUTRAL_SE: AudioStream = preload("res://resources/audio/getNeutral.wav")
+const GET_HIGH_SE: AudioStream = preload("res://resources/audio/getHigh.wav")
+const GET_HIGH_HIGH_SE: AudioStream = preload("res://resources/audio/getHighHigh.wav")
 
 const PLAYER_COLORS := [
 	Color(0.90, 0.30, 0.25), # P1 赤
@@ -22,13 +34,9 @@ const PLAYER_COLORS := [
 	Color(0.95, 0.80, 0.25), # P4 黄
 ]
 
-## Joy-Con横持ちの補正。左スティック(Lジョイコン)→-90(270)、右スティック(Rジョイコン)→+90。
-const LEFT_JOYCON_ROT := 270.0
-const RIGHT_JOYCON_ROT := 90.0
 const STICK_DEADZONE := 0.2
-## 突進ボタン(結合ペア): 左ジョイコン=12(DpadDown) / 右ジョイコン=3(Y)。
-const LEFT_DASH_BUTTON := 12
-const RIGHT_DASH_BUTTON := 3
+## SDL mini-gamepadモードで報告されるBTN 1を突進に使用する。
+const JOYCON_DASH_BUTTON := JOY_BUTTON_B
 ## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
 const ARROWS_DASH_KEY := KEY_SLASH
 const WASD_DASH_KEY := KEY_SHIFT
@@ -39,8 +47,7 @@ const DROP_MARGIN := 0.6
 
 @export var player_id: int = 0
 @export var input_device: int = -1     ## -1=キーボード矢印 / -2=WASD / 0..=Joy-Conデバイスid / その他=待機
-@export var input_stick: int = 0       ## joypad時のスティック 0=左(Lジョイコン) / 1=右(Rジョイコン)
-@export var input_rotation_deg: float = 0.0  ## 追加の微調整回転(既定0)
+@export var input_rotation_deg: float = 0.0  ## ドライバ差異に対する手動微調整(通常は0)
 @export var initial_size: float = -1.0  ## >0 で開始サイズを上書き(スクショ/テスト用)
 
 var size: float = 1.0
@@ -65,11 +72,19 @@ var _ball_shape: SphereShape3D
 var _beetle: MeshInstance3D
 var _beetle_mat: StandardMaterial3D
 var _crown: Label3D
+var _hit_audio: AudioStreamPlayer
+var _wall_hit_audio: AudioStreamPlayer
+var _charge_audio: AudioStreamPlayer
+var _dash_audio: AudioStreamPlayer
+var _get_neutral_audio: AudioStreamPlayer
+var _get_high_audio: AudioStreamPlayer
+var _get_high_high_audio: AudioStreamPlayer
 
 
 func _ready() -> void:
 	add_to_group("player") # オランウータンの直撃判定などで参照
 	size = initial_size if initial_size > 0.0 else Config.balance.size_start
+	_build_audio()
 	_build_visual()
 	_apply_size_visual()
 
@@ -111,6 +126,18 @@ func add_size(amount: float) -> void:
 	size += amount
 	_apply_size_visual()
 	size_changed.emit(player_id, size)
+
+
+## 実際の獲得量に応じて、通常・大きめ・最大級の取得SEを鳴らす。
+func play_pickup_se(amount: float) -> void:
+	var neutral_max := maxf(Config.balance.pickup_se_neutral_max, 0.0)
+	var high_high_min := maxf(Config.balance.pickup_se_high_high_min, neutral_max)
+	if amount >= high_high_min:
+		_play_audio_overlapping(_get_high_high_audio)
+	elif amount > neutral_max:
+		_play_audio_overlapping(_get_high_audio)
+	else:
+		_play_audio_overlapping(_get_neutral_audio)
 
 
 ## オランウータンのフン直撃効果。切替可(0=ボーナス+スロウ / 1=ボーナスのみ / 2=スロウのみ)。
@@ -159,6 +186,7 @@ func _start_dash() -> void:
 	_dash_dir = facing
 	velocity = Vector3.ZERO
 	_cd_t = Config.balance.dash_cooldown
+	_play_charge_audio()
 	dashed.emit(player_id)
 
 
@@ -166,8 +194,10 @@ func _process_windup(_delta: float) -> void:
 	velocity = Vector3.ZERO
 	_windup_t -= _delta
 	if _windup_t <= 0.0:
+		_stop_charge_audio()
 		state = State.DASHING
 		_dash_t = 0.0
+		_play_audio(_dash_audio)
 
 
 func _process_dashing(delta: float) -> void:
@@ -180,6 +210,8 @@ func _process_dashing(delta: float) -> void:
 		if other is Player:
 			_resolve_dash_contact(other as Player)
 		elif other is Node and (other as Node).is_in_group("wall"):
+			_play_audio(_wall_hit_audio)
+			_play_impact_vibrations([self])
 			drop_and_stun(true) # 壁激突=自滅
 		else:
 			_end_dash() # 想定外の障害物はそのまま停止
@@ -191,18 +223,73 @@ func _process_dashing(delta: float) -> void:
 func _resolve_dash_contact(victim: Player) -> void:
 	if victim.state == State.DASHING:
 		# 相打ち: 両者ノックバック+両者ドロップ
+		_play_audio(_hit_audio)
 		var away := global_position - victim.global_position
 		away.y = 0.0
 		away = away.normalized() if away.length() > 0.01 else -_dash_dir
 		_apply_knockback(away)
 		victim._apply_knockback(-away)
+		_play_impact_vibrations([self, victim])
 		drop_and_stun()
 		victim.drop_and_stun()
 	else:
 		# 命中: 相手だけドロップ+スタン、自分は無傷
+		_play_audio(_hit_audio)
+		_play_impact_vibrations([victim])
 		victim.drop_and_stun()
 		dash_hit.emit(player_id, victim.player_id)
 		_end_dash()
+
+
+## MVP対象の衝撃を、対象プレイヤーのデバイスごとにまとめて振動させる。
+## 結合ペアなど同じdeviceを複数人が共有する場合、共有者の一部だけを振動させることはできない。
+## 無関係なプレイヤーへの誤振動を避けるため、共有者全員がtargetsに含まれる場合だけ実機振動を許可する。
+func _play_impact_vibrations(targets: Array) -> void:
+	var targets_by_device := {}
+	for node in targets:
+		if not node is Player:
+			continue
+		var target := node as Player
+		target.vibration_requested.emit(target.player_id)
+		if not InputRouter.is_joypad(target.input_device):
+			continue
+		if not targets_by_device.has(target.input_device):
+			targets_by_device[target.input_device] = {}
+		targets_by_device[target.input_device][target.get_instance_id()] = true
+
+	for device_value in targets_by_device:
+		var device := int(device_value)
+		var target_ids: Dictionary = targets_by_device[device]
+		var assigned_ids := {}
+		for node in get_tree().get_nodes_in_group("player"):
+			if node is Player:
+				var assigned := node as Player
+				if not assigned.is_queued_for_deletion() and assigned.input_device == device:
+					assigned_ids[assigned.get_instance_id()] = true
+		var exclusive := assigned_ids.size() == target_ids.size()
+		vibration_route_resolved.emit(device, exclusive)
+		if exclusive:
+			_start_device_vibration(device)
+
+
+## キーボード・待機割当・切断済みjoypadでは呼ばれないデバイス単位の振動処理。
+func _start_device_vibration(device: int) -> void:
+	if not Input.get_connected_joypads().has(device):
+		return
+	if not Input.has_joy_vibration(device):
+		return
+	var weak := clampf(Config.balance.joy_vibration_weak_magnitude, 0.0, 1.0)
+	var strong := clampf(Config.balance.joy_vibration_strong_magnitude, 0.0, 1.0)
+	var duration := maxf(Config.balance.joy_vibration_duration, 0.0)
+	# Godotではduration=0が無期限振動なので、0は設定上の「無効」として扱う。
+	if duration <= 0.0 or (weak <= 0.0 and strong <= 0.0):
+		return
+	Input.start_joy_vibration(
+		device,
+		weak,
+		strong,
+		duration
+	)
 
 
 func _apply_knockback(dir: Vector3) -> void:
@@ -211,11 +298,13 @@ func _apply_knockback(dir: Vector3) -> void:
 
 
 func _end_dash() -> void:
+	_stop_charge_audio()
 	state = State.ROLLING
 	velocity = Vector3.ZERO
 
 
 func _enter_stun() -> void:
+	_stop_charge_audio()
 	state = State.STUNNED
 	_stun_t = Config.balance.stun_duration
 	velocity = Vector3.ZERO
@@ -287,8 +376,7 @@ func _dash_input_held() -> bool:
 	elif input_device == -2:
 		return Input.is_key_pressed(WASD_DASH_KEY)
 	elif input_device >= 0 and input_device < 9000:
-		var btn: int = RIGHT_DASH_BUTTON if input_stick == 1 else LEFT_DASH_BUTTON
-		return Input.is_joy_button_pressed(input_device, btn)
+		return Input.is_joy_button_pressed(input_device, JOYCON_DASH_BUTTON)
 	return false
 
 
@@ -304,15 +392,67 @@ func _read_move() -> Vector2:
 		v = v.rotated(deg_to_rad(input_rotation_deg))
 	return v
 
-## 割り当てられたスティック(input_stick)だけを読む。結合ペアは左右を別プレイヤーに割り当てるため。
+
+## --- SE ---
+
+func _build_audio() -> void:
+	_hit_audio = _create_audio_player("HitSE", HIT_SE)
+	_wall_hit_audio = _create_audio_player("WallHitSE", WALL_HIT_SE)
+	_charge_audio = _create_audio_player("ChargeSE", CHARGE_SE)
+	_dash_audio = _create_audio_player("DashSE", DASH_SE)
+	_get_neutral_audio = _create_audio_player("GetNeutralSE", GET_NEUTRAL_SE)
+	_get_high_audio = _create_audio_player("GetHighSE", GET_HIGH_SE)
+	_get_high_high_audio = _create_audio_player("GetHighHighSE", GET_HIGH_HIGH_SE)
+	_get_neutral_audio.max_polyphony = 4
+	_get_high_audio.max_polyphony = 4
+	_get_high_high_audio.max_polyphony = 4
+	_charge_audio.finished.connect(_on_charge_audio_finished)
+
+
+func _create_audio_player(node_name: String, stream: AudioStream) -> AudioStreamPlayer:
+	var player := AudioStreamPlayer.new()
+	player.name = node_name
+	player.stream = stream
+	add_child(player)
+	return player
+
+
+func _play_audio(player: AudioStreamPlayer) -> void:
+	if player == null:
+		return
+	player.stop()
+	player.play()
+
+
+## 密集したフンを連続取得した場合も、直前の取得音を打ち切らず重ねて鳴らす。
+func _play_audio_overlapping(player: AudioStreamPlayer) -> void:
+	if player != null:
+		player.play()
+
+
+func _play_charge_audio() -> void:
+	_play_audio(_charge_audio)
+
+
+func _stop_charge_audio() -> void:
+	if _charge_audio != null:
+		_charge_audio.stop()
+
+
+## 音源の末尾まで到達しても予備動作中なら、予備動作が終わるまで繰り返す。
+func _on_charge_audio_finished() -> void:
+	if state == State.DASH_WINDUP:
+		_charge_audio.play()
+
+## SDL mini-gamepadモードはL/Rどちらも横持ち補正済みの左スティック軸として公開する。
 func _joypad_vector(dev: int) -> Vector2:
-	var ax: JoyAxis = JOY_AXIS_RIGHT_X if input_stick == 1 else JOY_AXIS_LEFT_X
-	var ay: JoyAxis = JOY_AXIS_RIGHT_Y if input_stick == 1 else JOY_AXIS_LEFT_Y
-	var v := Vector2(Input.get_joy_axis(dev, ax), Input.get_joy_axis(dev, ay))
+	var v := Vector2(
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y)
+	)
 	if v.length() < STICK_DEADZONE:
 		return Vector2.ZERO
-	var rot: float = RIGHT_JOYCON_ROT if input_stick == 1 else LEFT_JOYCON_ROT
-	return v.rotated(deg_to_rad(rot))
+	return v
 
 func _arrows_vector() -> Vector2:
 	var x := (1.0 if Input.is_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_key_pressed(KEY_LEFT) else 0.0)

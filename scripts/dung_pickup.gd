@@ -42,6 +42,7 @@ func _on_body_entered(body: Node) -> void:
 	# 動物由来(ownerなし)は実量に獲得倍率を掛ける。プレイヤーが落としたフンは実量を保持する。
 	var gain: float = size * Config.balance.size_gain_per_pickup if owner_id < 0 else size
 	p.add_size(gain)
+	p.play_pickup_se(gain)
 	collected.emit(gain)
 	queue_free()
 

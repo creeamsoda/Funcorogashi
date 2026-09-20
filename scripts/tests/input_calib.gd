@@ -1,7 +1,7 @@
 extends Node3D
-## 入力キャリブ画面: 4プレイヤーを実際に動かして、割り当て・回転・入力を確認・調整する。
+## 入力キャリブ画面: 個別デバイス化した4台のJoy-Conで、割り当て・回転・入力を確認・調整する。
 ##  [1][2][3][4] : そのプレイヤー(P1〜P4)の入力を90°回転(横持ちの向き合わせ)
-##  各Joy-Conを動かして「どのPが動くか」「上倒し→キャラが上へ」になるよう回転を合わせ、
+##  SDLの個別mini-gamepadモードなら通常rot=0。ドライバ差異がある場合だけ回転を合わせ、
 ##  画面下部に出る rot 値を教えてください(ゲーム本編に反映します)。
 
 const SPOTS := [Vector3(-6, 0, -4), Vector3(6, 0, -4), Vector3(-6, 0, 4), Vector3(6, 0, 4)]
@@ -21,7 +21,6 @@ func _ready() -> void:
 		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 		p.player_id = i
 		p.input_device = srcs[i]["device"]
-		p.input_stick = srcs[i]["stick"]
 		add_child(p)
 		p.global_position = SPOTS[i]
 		_players.append(p)
@@ -54,15 +53,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_last_btn = "dev%d  BTN %d" % [b.device, b.button_index]
 
 func _process(_dt: float) -> void:
-	var lines: Array[String] = ["=== INPUT CALIB ===  [1][2][3][4] = そのPの入力を90度回転"]
-	lines.append("各Joy-Conを動かして、上倒し→キャラ上 になるよう合わせて rot を報告してください")
+	var lines: Array[String] = ["=== INPUT CALIB ===  1 Joy-Con = 1 device = 1 player"]
+	lines.append("4台が別devか確認。[1][2][3][4] = 各Pを90度回転")
 	for i in _players.size():
 		var p := _players[i]
 		var v := p.call("_read_move") as Vector2
 		var color: String = ["赤", "青", "緑", "黄"][i]
 		var src := "kbd"
 		if p.input_device >= 0 and p.input_device < 9000:
-			src = "dev%d-%s" % [p.input_device, ("R" if p.input_stick == 1 else "L")]
-		lines.append("P%d(%s)  %s  in(%+.2f,%+.2f)" % [i + 1, color, src, v.x, v.y])
+			src = "dev%d %s" % [p.input_device, Input.get_joy_name(p.input_device)]
+		lines.append("P%d(%s)  %s  in(%+.2f,%+.2f) rot=%.0f" % [
+			i + 1, color, src, v.x, v.y, p.input_rotation_deg
+		])
 	lines.append("突進ボタン確認: 押したボタン = " + _last_btn)
 	_label.text = "\n".join(lines)

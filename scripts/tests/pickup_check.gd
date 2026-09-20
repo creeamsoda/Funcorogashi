@@ -20,6 +20,7 @@ func _ready() -> void:
 
 	var expected: float = before + 0.5 * Config.balance.size_gain_per_pickup
 	var gain_ok := is_equal_approx(player.size, expected)
+	var neutral_se_ok := (player.get_node("GetNeutralSE") as AudioStreamPlayer).playing
 
 	# プレイヤー由来のドロップは動物用倍率を掛けず、実量をそのまま回収する。
 	var player_drop := DungPickup.create(0.5, 1)
@@ -77,6 +78,18 @@ func _ready() -> void:
 	player.add_size(0.25)
 	var logical_growth_ok := is_equal_approx(player.size, logical_before + 0.25)
 
+	# 実獲得量のしきい値で通常・大きめ・最大級の取得SEが選ばれる。
+	var high_amount := lerpf(
+		Config.balance.pickup_se_neutral_max,
+		Config.balance.pickup_se_high_high_min,
+		0.5
+	)
+	player.play_pickup_se(high_amount)
+	var high_se_ok := (player.get_node("GetHighSE") as AudioStreamPlayer).playing
+	player.play_pickup_se(Config.balance.pickup_se_high_high_min)
+	var high_high_se_ok := (player.get_node("GetHighHighSE") as AudioStreamPlayer).playing
+	var pickup_se_ok := neutral_se_ok and high_se_ok and high_high_se_ok
+
 	scale_probe.free()
 	Config.balance.size_to_scale = old_player_scale
 	Config.balance.pickup_size_to_scale = old_pickup_scale
@@ -88,12 +101,19 @@ func _ready() -> void:
 	var ok: bool = got.hit and gain_ok and player_drop_ok and scale_ok and volume_ok and log_ok \
 		and radius_cap_ok \
 		and logical_growth_ok \
+		and pickup_se_ok \
 		and not is_instance_valid(pickup)
 	print("[pickup_check] result=", ("PASS" if ok else "FAIL"),
 		" collected=", got.hit, " size ", before, " -> ", player.size,
 		" animal_gain=", gain_ok, " player_drop_full_amount=", player_drop_ok,
 		" scale_independent=", scale_ok, " volume_visual=", volume_ok,
 		" log_visual=", log_ok, " radius_cap=", radius_cap_ok,
-		" logical_growth=", logical_growth_ok,
+		" logical_growth=", logical_growth_ok, " pickup_se=", pickup_se_ok,
 		" pickup_freed=", not is_instance_valid(pickup))
+	for child in player.get_children():
+		if child is AudioStreamPlayer:
+			(child as AudioStreamPlayer).stop()
+	player.queue_free()
+	for _i in 2:
+		await get_tree().physics_frame
 	get_tree().quit(0 if ok else 1)
