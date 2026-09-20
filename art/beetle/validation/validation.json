@@ -1,0 +1,818 @@
+{
+	"arms": [
+		{
+			"distal_vertex": [
+				-0.925068974494934,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323453575372696
+		},
+		{
+			"distal_vertex": [
+				0.925060868263245,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323452085256577
+		}
+	],
+	"engine": "4.7.2-stable (official)",
+	"errors": [],
+	"ground": {
+		"all_meshes_above_ground_y_0": true,
+		"mesh_minimum_global_y": {
+			"Abdomen": 0.119999997317791,
+			"Arm_L": 0.0448872447013855,
+			"Arm_R": 0.0448872447013855,
+			"Head": 0.180000007152557,
+			"Leg_Middle_L": 0.0186639130115509,
+			"Leg_Middle_R": 0.0186639130115509,
+			"Leg_Rear_L": 0.0187538266181946,
+			"Leg_Rear_R": 0.0187538266181946,
+			"Thorax": 0.140000000596046,
+			"WingShell": 0.25
+		},
+		"minimum_global_y": 0.0186639130115509,
+		"tolerance": 0.00001
+	},
+	"hierarchy": [
+		{
+			"class": "Node3D",
+			"path": "/root/beetle"
+		},
+		{
+			"class": "Node3D",
+			"path": "/root/beetle/Beetle"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Abdomen"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Arm_L"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Arm_R"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Head"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Leg_Middle_L"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Leg_Middle_R"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Leg_Rear_L"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Leg_Rear_R"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/Thorax"
+		},
+		{
+			"class": "MeshInstance3D",
+			"path": "/root/beetle/Beetle/WingShell"
+		}
+	],
+	"import_method": "GLTFDocument.append_from_file + generate_scene",
+	"import_ok": true,
+	"limbs": [
+		{
+			"distal_vertex": [
+				-0.925068974494934,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323453575372696
+		},
+		{
+			"distal_vertex": [
+				0.925060868263245,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323452085256577
+		},
+		{
+			"distal_vertex": [
+				-1.37050974369049,
+				0.0352388024330139,
+				0.863021492958069
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"found": true,
+			"name": "Leg_Middle_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.525871872901917
+		},
+		{
+			"distal_vertex": [
+				1.37049865722656,
+				0.0352388024330139,
+				0.863021492958069
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"found": true,
+			"name": "Leg_Middle_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.525869131088257
+		},
+		{
+			"distal_vertex": [
+				-1.20924687385559,
+				0.0348311960697174,
+				1.31327450275421
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"found": true,
+			"name": "Leg_Rear_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.459108650684357
+		},
+		{
+			"distal_vertex": [
+				1.20923781394959,
+				0.0348311960697174,
+				1.31327450275421
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"found": true,
+			"name": "Leg_Rear_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.459106743335724
+		}
+	],
+	"mesh_count": 10,
+	"meshes": [
+		{
+			"aabb_position": [
+				-0.790000021457672,
+				0.119999997317791,
+				-0.660000026226044
+			],
+			"aabb_size": [
+				1.58000004291534,
+				0.519999980926514,
+				1.75999999046326
+			],
+			"global_position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"name": "Abdomen",
+			"path": "/root/beetle/Beetle/Abdomen",
+			"position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.516881108283997,
+						0.546854257583618,
+						0.565728425979614,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Body",
+					"triangles": 160,
+					"uv_count": 82,
+					"uv_max": [
+						0.763332545757294,
+						0.899992346763611
+					],
+					"uv_min": [
+						0.236652165651321,
+						0.313328742980957
+					],
+					"vertices": 82
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.503598928451538,
+				-0.385112762451172,
+				-0.682101190090179
+			],
+			"aabb_size": [
+				0.533486068248749,
+				0.416841983795166,
+				0.782757818698883
+			],
+			"global_position": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"name": "Arm_L",
+			"path": "/root/beetle/Beetle/Arm_L",
+			"position": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 142,
+					"uv_count": 73,
+					"uv_max": [
+						0.30328831076622,
+						0.293537795543671
+					],
+					"uv_min": [
+						0.125459671020508,
+						0.032623790204525
+					],
+					"vertices": 73
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.0298871397972107,
+				-0.385112762451172,
+				-0.682101190090179
+			],
+			"aabb_size": [
+				0.533486068248749,
+				0.416841983795166,
+				0.782757818698883
+			],
+			"global_position": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"name": "Arm_R",
+			"path": "/root/beetle/Beetle/Arm_R",
+			"position": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 142,
+					"uv_count": 73,
+					"uv_max": [
+						0.87452507019043,
+						0.293537795543671
+					],
+					"uv_min": [
+						0.696696400642395,
+						0.032623790204525
+					],
+					"vertices": 73
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.379999995231628,
+				0.180000007152557,
+				-1.47000002861023
+			],
+			"aabb_size": [
+				0.759999990463257,
+				0.560000002384186,
+				0.680000007152557
+			],
+			"global_position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"name": "Head",
+			"path": "/root/beetle/Beetle/Head",
+			"position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.516881108283997,
+						0.546854257583618,
+						0.565728425979614,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Body",
+					"triangles": 200,
+					"uv_count": 102,
+					"uv_max": [
+						0.626657485961914,
+						0.269993126392365
+					],
+					"uv_min": [
+						0.373327225446701,
+						0.0433203615248203
+					],
+					"vertices": 102
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.69430536031723,
+				-0.351336091756821,
+				-0.0553577840328217
+			],
+			"aabb_size": [
+				0.728371679782867,
+				0.400086581707001,
+				1.06837928295136
+			],
+			"global_position": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"name": "Leg_Middle_L",
+			"path": "/root/beetle/Beetle/Leg_Middle_L",
+			"position": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 94,
+					"uv_count": 49,
+					"uv_max": [
+						0.278019368648529,
+						0.820996403694153
+					],
+					"uv_min": [
+						0.035217821598053,
+						0.464866101741791
+					],
+					"vertices": 49
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.0340663194656372,
+				-0.351336091756821,
+				-0.0553577840328217
+			],
+			"aabb_size": [
+				0.728371679782867,
+				0.400086581707001,
+				1.06837928295136
+			],
+			"global_position": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"name": "Leg_Middle_R",
+			"path": "/root/beetle/Beetle/Leg_Middle_R",
+			"position": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 94,
+					"uv_count": 49,
+					"uv_max": [
+						0.964766919612885,
+						0.820996403694153
+					],
+					"uv_min": [
+						0.721965372562408,
+						0.464866101741791
+					],
+					"vertices": 49
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.564686715602875,
+				-0.331246167421341,
+				-0.0535660684108734
+			],
+			"aabb_size": [
+				0.599710702896118,
+				0.379003524780273,
+				0.966840624809265
+			],
+			"global_position": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"name": "Leg_Rear_L",
+			"path": "/root/beetle/Beetle/Leg_Rear_L",
+			"position": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 94,
+					"uv_count": 49,
+					"uv_max": [
+						0.288334488868713,
+						0.971084177494049
+					],
+					"uv_min": [
+						0.0884260311722755,
+						0.64879834651947
+					],
+					"vertices": 49
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.0350239872932434,
+				-0.331246167421341,
+				-0.0535660684108734
+			],
+			"aabb_size": [
+				0.599710702896118,
+				0.379003524780273,
+				0.966840624809265
+			],
+			"global_position": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"name": "Leg_Rear_R",
+			"path": "/root/beetle/Beetle/Leg_Rear_R",
+			"position": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.410020887851715,
+						0.449203908443451,
+						0.473120659589767,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Limbs",
+					"triangles": 94,
+					"uv_count": 49,
+					"uv_max": [
+						0.91155868768692,
+						0.971084177494049
+					],
+					"uv_min": [
+						0.711650252342224,
+						0.64879834651947
+					],
+					"vertices": 49
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.819999992847443,
+				0.140000000596046,
+				-1.19000005722046
+			],
+			"aabb_size": [
+				1.63999998569489,
+				0.699999988079071,
+				0.940000057220459
+			],
+			"global_position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"name": "Thorax",
+			"path": "/root/beetle/Beetle/Thorax",
+			"position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						0.516881108283997,
+						0.546854257583618,
+						0.565728425979614,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Body",
+					"triangles": 336,
+					"uv_count": 170,
+					"uv_max": [
+						0.773327231407166,
+						0.449988543987274
+					],
+					"uv_min": [
+						0.226657509803772,
+						0.136659801006317
+					],
+					"vertices": 170
+				}
+			]
+		},
+		{
+			"aabb_position": [
+				-0.955608010292053,
+				0.25,
+				-0.579999983310699
+			],
+			"aabb_size": [
+				1.91121602058411,
+				0.709999978542328,
+				1.70000004768372
+			],
+			"global_position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"name": "WingShell",
+			"path": "/root/beetle/Beetle/WingShell",
+			"position": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"surfaces": [
+				{
+					"albedo_color": [
+						1.0,
+						1.0,
+						1.0,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Wing_Image",
+					"triangles": 288,
+					"uv_count": 161,
+					"uv_max": [
+						0.950743854045868,
+						0.943587422370911
+					],
+					"uv_min": [
+						0.0492408648133278,
+						0.0717936977744102
+					],
+					"vertices": 161
+				},
+				{
+					"albedo_color": [
+						0.516881108283997,
+						0.546854257583618,
+						0.565728425979614,
+						1.0
+					],
+					"albedo_texture": "",
+					"material_class": "StandardMaterial3D",
+					"material_name": "Body",
+					"triangles": 96,
+					"uv_count": 65,
+					"uv_max": [
+						0.950743854045868,
+						0.943587422370911
+					],
+					"uv_min": [
+						0.0492408648133278,
+						0.0717936977744102
+					],
+					"vertices": 65
+				}
+			]
+		}
+	],
+	"passed": true,
+	"source": "resources/models/beetle/beetle.glb",
+	"source_sha256": "b03bb8021f8f07e056ea22a5a64958d2d50dedd79ec372dd24ff98695320a0f5",
+	"totals": {
+		"surfaces": 11,
+		"triangles": 1740,
+		"vertices": 922
+	},
+	"wing": {
+		"image_surface_material": "Wing_Image",
+		"surface_connected_components": 1,
+		"texture_present": true,
+		"texture_size": [
+			1024,
+			1024
+		],
+		"uv_count_matches_vertices": true,
+		"uv_within_0_1": true
+	},
+	"within_1000_vertex_budget": true
+}

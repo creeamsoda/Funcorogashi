@@ -1,0 +1,125 @@
+{
+  "model_vertices": 890,
+  "gltf_vertices": 922,
+  "triangles": 1740,
+  "mesh_objects": 10,
+  "materials": 3,
+  "coordinate_system": {
+    "blender_up": "+Z",
+    "blender_forward": "+Y",
+    "godot_up": "+Y",
+    "godot_forward": "-Z"
+  },
+  "objects": {
+    "WingShell": {
+      "vertices": 194,
+      "triangles": 384,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "Abdomen": {
+      "vertices": 82,
+      "triangles": 160,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "Thorax": {
+      "vertices": 170,
+      "triangles": 336,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "Head": {
+      "vertices": 102,
+      "triangles": 200,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "Arm_L": {
+      "vertices": 73,
+      "triangles": 142,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        -0.62,
+        0.82,
+        0.43
+      ]
+    },
+    "Leg_Middle_L": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        -0.7,
+        0.15,
+        0.37
+      ]
+    },
+    "Leg_Rear_L": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        -0.67,
+        -0.4,
+        0.35
+      ]
+    },
+    "Arm_R": {
+      "vertices": 73,
+      "triangles": 142,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.62,
+        0.82,
+        0.43
+      ]
+    },
+    "Leg_Middle_R": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.7,
+        0.15,
+        0.37
+      ]
+    },
+    "Leg_Rear_R": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "zero_area_faces": 0,
+      "pivot_blender": [
+        0.67,
+        -0.4,
+        0.35
+      ]
+    }
+  }
+}

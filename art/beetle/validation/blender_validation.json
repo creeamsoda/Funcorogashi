@@ -1,0 +1,187 @@
+{
+  "checked_at_utc": "2026-09-20T07:40:43.031996+00:00",
+  "blender_version": "5.2.1 LTS",
+  "source_sha256": {
+    "beetle.blend": "0659a77f558593043f16bc241472356c2dc269fee6d7f85c85820a0886fa644b",
+    "beetle.glb": "b03bb8021f8f07e056ea22a5a64958d2d50dedd79ec372dd24ff98695320a0f5"
+  },
+  "passed": true,
+  "errors": [],
+  "source_meshes": {
+    "WingShell": {
+      "vertices": 194,
+      "triangles": 384,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 1.4318435538428111,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Abdomen": {
+      "vertices": 82,
+      "triangles": 160,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.6883971369516475,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Thorax": {
+      "vertices": 170,
+      "triangles": 336,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.5373333986058891,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Head": {
+      "vertices": 102,
+      "triangles": 200,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.1529556973317494,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Arm_L": {
+      "vertices": 73,
+      "triangles": 142,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.0076788904402409494,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Leg_Middle_L": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.007135937017660414,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Leg_Rear_L": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.0062667749060851706,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Arm_R": {
+      "vertices": 73,
+      "triangles": 142,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.008143772327062702,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Leg_Middle_R": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.007040878392753094,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    },
+    "Leg_Rear_R": {
+      "vertices": 49,
+      "triangles": 94,
+      "non_manifold_edges": 0,
+      "inconsistent_winding_edges": 0,
+      "loose_vertices": 0,
+      "zero_area_triangles": 0,
+      "signed_volume": 0.00616649292650765,
+      "finite_coordinates": true,
+      "neutral_rotation": true,
+      "unit_scale": true
+    }
+  },
+  "wing_uv_positive_area": true,
+  "wing_texture_packed": true,
+  "export_matches_source": {
+    "Abdomen": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Leg_Middle_R": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Thorax": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Arm_L": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Arm_R": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Head": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Leg_Middle_L": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Leg_Rear_L": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "Leg_Rear_R": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    },
+    "WingShell": {
+      "maximum_vertex_distance": 0.0,
+      "pivot_distance": 0.0,
+      "triangles_match": true
+    }
+  },
+  "preview_source": "resources/models/beetle/beetle.glb"
+}
