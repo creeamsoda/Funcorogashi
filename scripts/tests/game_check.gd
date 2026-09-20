@@ -24,16 +24,21 @@ func _ready() -> void:
 	await get_tree().create_timer(1.0).timeout
 
 	var results_ui := 0
+	var retry_button: Button = null
 	for c in gm.get_children():
 		if c is Results:
 			results_ui += 1
+			retry_button = c.find_child("RetryButton", true, false) as Button
 
 	var res_arr: Array = ended["results"]
+	var retry_ok := retry_button != null \
+		and retry_button.text == "RETRY" \
+		and retry_button.has_focus()
 	var ok: bool = gm.players.size() == Config.balance.player_count \
 		and ended["hit"] and res_arr.size() == Config.balance.player_count \
-		and results_ui >= 1
+		and results_ui >= 1 and retry_ok
 	print("[game_check] result=", ("PASS" if ok else "FAIL"),
 		" players=", gm.players.size(), " ended=", ended["hit"],
 		" results=", res_arr.size(), " pickups_in_3s=", pickups,
-		" results_ui=", results_ui)
+		" results_ui=", results_ui, " retry_button=", retry_ok)
 	get_tree().quit(0 if ok else 1)

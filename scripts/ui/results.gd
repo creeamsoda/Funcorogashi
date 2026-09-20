@@ -4,6 +4,8 @@ extends CanvasLayer
 ## show_results(results) で表示。results 要素: {player_id:int, size:float, dash_hits:int}
 ## 注: Dictionary の "size" キーは r["size"] で参照(r.size は Dictionary.size() と衝突するため)。
 
+const RETRY_BUTTON_SIZE := Vector2(300, 64)
+
 func show_results(results: Array) -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0, 0, 0, 0.55)
@@ -38,6 +40,20 @@ func show_results(results: Array) -> void:
 		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		vbox.add_child(sub)
 
+	var retry_button := Button.new()
+	retry_button.name = "RetryButton"
+	retry_button.text = "RETRY"
+	retry_button.custom_minimum_size = RETRY_BUTTON_SIZE
+	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	retry_button.add_theme_font_size_override("font_size", 28)
+	retry_button.add_theme_stylebox_override("normal", _button_style(Color(0.12, 0.38, 0.22)))
+	retry_button.add_theme_stylebox_override("hover", _button_style(Color(0.18, 0.52, 0.30)))
+	retry_button.add_theme_stylebox_override("pressed", _button_style(Color(0.08, 0.27, 0.15)))
+	retry_button.add_theme_stylebox_override("focus", _button_style(Color(0.95, 0.78, 0.22), 4))
+	retry_button.pressed.connect(_on_retry_pressed.bind(retry_button))
+	vbox.add_child(retry_button)
+	retry_button.grab_focus()
+
 func _top_by(results: Array, key: String) -> Variant:
 	var best: Variant = null
 	for r in results:
@@ -53,3 +69,17 @@ func _label(text: String, fs: int, color: Color) -> Label:
 	l.add_theme_color_override("font_outline_color", Color.BLACK)
 	l.add_theme_constant_override("outline_size", 5)
 	return l
+
+
+func _button_style(color: Color, border_width: int = 0) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = Color(1.0, 0.9, 0.45)
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(10)
+	return style
+
+
+func _on_retry_pressed(retry_button: Button) -> void:
+	retry_button.disabled = true
+	get_tree().reload_current_scene()
