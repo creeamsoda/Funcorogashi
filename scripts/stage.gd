@@ -15,6 +15,8 @@ func _ready() -> void:
 
 func _build_floor() -> void:
 	var body := StaticBody3D.new()
+	body.collision_layer = Player.WALL_LAYER
+	body.collision_mask = 0
 	body.name = "Floor"
 	body.add_to_group("floor")
 	add_child(body)
@@ -46,6 +48,8 @@ func _build_walls() -> void:
 	add_child(walls)
 	for s in specs:
 		var body := StaticBody3D.new()
+		body.collision_layer = Player.WALL_LAYER
+		body.collision_mask = 0
 		body.add_to_group("wall")
 		walls.add_child(body)
 		var mesh := BoxMesh.new()

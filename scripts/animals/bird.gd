@@ -11,6 +11,8 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_make_box(Vector3(1.6, 0.5, 0.7), Color(0.85, 0.90, 1.0))
+	if begin_solo():
+		return
 	_rng.randomize()
 	_setup_flight()
 	_drops_left = maxi(1, Config.balance.bird_drop_count)

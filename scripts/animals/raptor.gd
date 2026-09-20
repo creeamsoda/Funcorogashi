@@ -16,6 +16,8 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_make_box(Vector3(0.6, 0.6, 1.4), Color(0.30, 0.55, 0.30))
+	if begin_solo():
+		return
 	_rng.randomize()
 	_setup_entry()
 	_bounces_left = _rng.randi_range(2, 3) # 場内で折り返す回数

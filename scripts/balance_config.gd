@@ -9,6 +9,13 @@ extends Resource
 @export var match_duration: float = 180.0          ## 制限時間(秒)
 @export var player_count: int = 4                  ## 同時プレイ人数
 
+@export_group("Solo NPC")
+@export var solo_npc_speed: float = 3.0            ## 横断の経路進行速度(m/s)
+@export var solo_npc_initial_size: float = 12.0    ## 出現時の保有フン量
+@export var solo_npc_sway: float = 0.65            ## 経路からの蛇行幅(m)
+@export var solo_npc_sway_period: float = 3.0      ## 蛇行の周期(秒)
+@export var solo_npc_lifetime: float = 24.0        ## スタン中も進む最大滞在時間(秒)
+
 @export_group("Dung Growth")
 @export_enum("Linear", "VolumeBased", "Logarithmic") var size_visual_mode: int = 0  ## 内部サイズから見た目半径を求める方式
 @export var size_start: float = 1.0                ## 開始サイズ

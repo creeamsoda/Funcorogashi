@@ -27,8 +27,8 @@ func _test_crown() -> bool:
 	await get_tree().process_frame
 	var switched := not c0.visible and c1.visible
 	gm.time_left = GameManager.CROWN_HIDE_TIME + 0.01
-	await get_tree().process_frame
-	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 	var hidden := not c0.visible and not c1.visible
 	gm.queue_free()
 	await get_tree().process_frame

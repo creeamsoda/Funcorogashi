@@ -6,6 +6,8 @@ extends CanvasLayer
 ## 注: Dictionary の "size" キーは r["size"] で参照(r.size は Dictionary.size() と衝突するため)。
 
 signal presentation_finished
+signal retry_requested
+signal menu_requested
 
 const RETRY_BUTTON_SIZE := Vector2(300, 64)
 const CONTESTANT_SIZE := ResultContestant.DISPLAY_SIZE
@@ -22,6 +24,7 @@ var _contestants: Array[ResultContestant] = []
 var _contestant_targets: Array[Vector2] = []
 var _award_label: Label
 var _retry_button: Button
+var _menu_button: Button
 var _sorted_results: Array = []
 var _sequence_started := false
 
@@ -103,6 +106,13 @@ func _build_ui() -> void:
 	_retry_button.disabled = true
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_root.add_child(_retry_button)
+	_menu_button = MenuStyle.make_button("モード選択へ")
+	_menu_button.name = "MenuButton"
+	_menu_button.size = RETRY_BUTTON_SIZE
+	_menu_button.visible = false
+	_menu_button.disabled = true
+	_menu_button.pressed.connect(func() -> void: menu_requested.emit())
+	_root.add_child(_menu_button)
 
 
 func _play_sequence() -> void:
@@ -171,12 +181,17 @@ func _play_sequence() -> void:
 	await get_tree().create_timer(_scaled(0.38)).timeout
 
 	# 7. 最後にリトライボタン。
-	_retry_button.position = Vector2((viewport_size.x - RETRY_BUTTON_SIZE.x) * 0.5, viewport_size.y - 78.0)
+	_retry_button.position = Vector2(viewport_size.x * 0.5 - RETRY_BUTTON_SIZE.x - 12.0, viewport_size.y - 78.0)
+	_menu_button.position = Vector2(viewport_size.x * 0.5 + 12.0, viewport_size.y - 78.0)
 	var retry_tween := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	retry_tween.tween_property(_retry_button, "modulate:a", 1.0, _scaled(0.24))
 	retry_tween.tween_property(_retry_button, "scale", Vector2.ONE, _scaled(0.30))
 	await retry_tween.finished
 	_retry_button.disabled = false
+	_menu_button.disabled = false
+	_menu_button.visible = true
+	_retry_button.focus_neighbor_right = _retry_button.get_path_to(_menu_button)
+	_menu_button.focus_neighbor_left = _menu_button.get_path_to(_retry_button)
 	_retry_button.grab_focus()
 	presentation_finished.emit()
 
@@ -260,4 +275,15 @@ func _button_style(color: Color, border_width: int = 0) -> StyleBoxFlat:
 
 func _on_retry_pressed() -> void:
 	_retry_button.disabled = true
-	get_tree().reload_current_scene()
+	if retry_requested.get_connections().is_empty():
+		get_tree().reload_current_scene()
+	else:
+		retry_requested.emit()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton and event.button_index == JOY_BUTTON_B and event.pressed:
+		var button := get_viewport().gui_get_focus_owner() as Button
+		if button != null and is_ancestor_of(button) and not button.disabled:
+			get_viewport().set_input_as_handled()
+			button.pressed.emit()

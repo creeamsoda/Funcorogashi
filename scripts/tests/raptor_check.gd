@@ -44,4 +44,4 @@ func _ready() -> void:
 	get_tree().quit(0 if ok else 1)
 
 func _inside(p: Vector3) -> bool:
-	return absf(p.x) < 12.0 and absf(p.z) < 8.0
+	return absf(p.x) < Animal.HX and absf(p.z) < Animal.HZ

@@ -12,6 +12,7 @@ var collectible_at: float = 0.0  ## この秒(get_ticks/1000)以降 owner 本人
 var _mesh: SphereMesh
 var _shape: SphereShape3D
 var _spawned_at: float
+var _collected := false
 
 
 ## ファクトリ。GameManager.spawn_pickup() から使う。
@@ -23,6 +24,8 @@ static func create(p_size: float, p_owner_id: int = -1) -> DungPickup:
 
 
 func _ready() -> void:
+	collision_layer = 0
+	collision_mask = Player.HUMAN_LAYER
 	_spawned_at = _now()
 	_build_visual()
 	body_entered.connect(_on_body_entered)
@@ -34,13 +37,16 @@ func _process(_dt: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if not (body is Player):
+	if _collected or is_queued_for_deletion() or not (body is Player):
 		return
 	var p := body as Player
+	if not p.gameplay_active or not p.can_collect or p.is_queued_for_deletion():
+		return
 	if owner_id == p.player_id and _now() < collectible_at:
 		return # 自分のドロップはスタン明けまで回収不可
 	# 動物由来(ownerなし)は実量に獲得倍率を掛ける。プレイヤーが落としたフンは実量を保持する。
 	var gain: float = size * Config.balance.size_gain_per_pickup if owner_id < 0 else size
+	_collected = true # 同一フレームの複数body_enteredでも1回だけ加算する。
 	p.add_size(gain)
 	p.play_pickup_se(gain)
 	collected.emit(gain)

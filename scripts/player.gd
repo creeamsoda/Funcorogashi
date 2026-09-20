@@ -53,6 +53,10 @@ const WASD_DASH_KEY := KEY_SHIFT
 const ARENA_HX := 18.0
 const ARENA_HZ := 12.0
 const DROP_MARGIN := 0.6
+## 物理レイヤーのビット値。NPCは専用レイヤーで壁の外から出入りする。
+const WALL_LAYER := 1
+const HUMAN_LAYER := 2
+const NPC_LAYER := 4
 
 @export var player_id: int = 0
 @export var input_device: int = -1     ## -1=キーボード矢印 / -2=WASD / 0..=Joy-Conデバイスid / その他=待機
@@ -62,6 +66,14 @@ const DROP_MARGIN := 0.6
 var size: float = 1.0
 var facing: Vector3 = Vector3(0, 0, -1)
 var state: State = State.ROLLING
+var gameplay_active: bool = true
+var can_collect: bool = true
+var debug_growth_used: bool = false
+var debug_growth_enabled: bool = false:
+	set(value):
+		debug_growth_enabled = value
+		if value:
+			debug_growth_used = true
 
 var _dash_dir := Vector3(0, 0, -1)
 var _windup_t := 0.0
@@ -73,6 +85,8 @@ var _kb_t := 0.0
 var _dash_prev := false     ## 突進ボタンの前フレーム状態(押下エッジ検出)
 var _slow_t := 0.0          ## オランウータン直撃の軽スロウ残り
 var _slow_factor := 1.0
+var _dash_suppressed := false
+var _scatter_rng: RandomNumberGenerator
 
 var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
@@ -96,6 +110,8 @@ var _get_high_high_audio: AudioStreamPlayer
 
 func _ready() -> void:
 	add_to_group("player") # オランウータンの直撃判定などで参照
+	collision_layer = HUMAN_LAYER
+	collision_mask = WALL_LAYER | HUMAN_LAYER | NPC_LAYER
 	size = initial_size if initial_size > 0.0 else Config.balance.size_start
 	_build_audio()
 	_build_visual()
@@ -103,11 +119,17 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not gameplay_active:
+		return
 	if _cd_t > 0.0:
 		_cd_t -= delta
 	if _slow_t > 0.0:
 		_slow_t -= delta
 	var dash_now := _dash_input_held()
+	if _dash_suppressed:
+		if not dash_now:
+			_dash_suppressed = false
+		dash_now = false
 	match state:
 		State.ROLLING:
 			_process_rolling(delta)
@@ -126,16 +148,45 @@ func _physics_process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 開発用: キーボード操作時のみ、Space で疑似的にフンを取り込んで成長を確認できる。
-	if input_device >= 0:
+	if not gameplay_active or not debug_growth_enabled or input_device not in [-1, -2]:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		# 標準サイズ1.0の動物フンを拾った場合の疑似成長。
+		debug_growth_used = true
 		add_size(Config.balance.animal_dung_amount_multiplier * Config.balance.size_gain_per_pickup)
 
 
 ## --- 公開API(契約 §6-2) ---
 
+## 一人用の散布だけを個体専用乱数にする。対戦は従来の乱数を維持する。
+func set_scatter_seed(value: int) -> void:
+	_scatter_rng = RandomNumberGenerator.new()
+	_scatter_rng.seed = value
+
+
+## モード選択・リトライの決定ボタンを離すまで最初の突進を抑止する。
+func suppress_dash_until_release() -> void:
+	_dash_suppressed = true
+	_dash_prev = false
+
+
+## 終了後に直接コールバックが届いても、入力・得点・衝突効果を受け付けない。
+func stop_gameplay() -> void:
+	gameplay_active = false
+	velocity = Vector3.ZERO
+	_kb_vel = Vector3.ZERO
+	state = State.ROLLING
+	set_process_unhandled_input(false)
+	for child in get_children():
+		if child is AudioStreamPlayer:
+			(child as AudioStreamPlayer).stop()
+	if is_in_group("player") and InputRouter.is_joypad(input_device):
+		Input.stop_joy_vibration(input_device)
+
+
 func add_size(amount: float) -> void:
+	if not gameplay_active or is_queued_for_deletion():
+		return
 	size += amount
 	_apply_size_visual()
 	size_changed.emit(player_id, size)
@@ -143,6 +194,8 @@ func add_size(amount: float) -> void:
 
 ## 実際の獲得量に応じて、通常・大きめ・最大級の取得SEを鳴らす。
 func play_pickup_se(amount: float) -> void:
+	if not gameplay_active:
+		return
 	var neutral_max := maxf(Config.balance.pickup_se_neutral_max, 0.0)
 	var high_high_min := maxf(Config.balance.pickup_se_high_high_min, neutral_max)
 	if amount >= high_high_min:
@@ -155,6 +208,8 @@ func play_pickup_se(amount: float) -> void:
 
 ## オランウータンのフン直撃効果。切替可(0=ボーナス+スロウ / 1=ボーナスのみ / 2=スロウのみ)。
 func apply_orangutan_hit() -> void:
+	if not gameplay_active or not can_collect or is_queued_for_deletion():
+		return
 	var eff: int = Config.balance.orangutan_hit_effect
 	if eff != 2: # SlowOnly以外 → ボーナス
 		add_size(Config.balance.orangutan_bonus_size)
@@ -179,6 +234,8 @@ func set_crown_visible(show: bool) -> void:
 
 ## 保有フンの drop_ratio 分を切り離し、lossを除いた量を地面に分裂ドロップしてスタンする。
 func drop_and_stun(_is_self_crash: bool = false) -> void:
+	if not gameplay_active or is_queued_for_deletion():
+		return
 	var detached: float = size * clampf(Config.balance.drop_ratio, 0.0, 1.0)
 	if detached > 0.0:
 		size -= detached
@@ -194,6 +251,8 @@ func drop_and_stun(_is_self_crash: bool = false) -> void:
 ## --- 突進 ---
 
 func _start_dash() -> void:
+	if not gameplay_active:
+		return
 	state = State.DASH_WINDUP
 	_windup_t = Config.balance.dash_windup
 	_dash_dir = facing
@@ -234,6 +293,8 @@ func _process_dashing(delta: float) -> void:
 
 
 func _resolve_dash_contact(victim: Player) -> void:
+	if not gameplay_active or not victim.gameplay_active or victim.is_queued_for_deletion():
+		return
 	if victim.state == State.DASHING:
 		# 相打ち: 両者ノックバック+両者ドロップ
 		_play_audio(_hit_audio)
@@ -258,11 +319,15 @@ func _resolve_dash_contact(victim: Player) -> void:
 ## 結合ペアなど同じdeviceを複数人が共有する場合、共有者の一部だけを振動させることはできない。
 ## 無関係なプレイヤーへの誤振動を避けるため、共有者全員がtargetsに含まれる場合だけ実機振動を許可する。
 func _play_impact_vibrations(targets: Array) -> void:
+	if not gameplay_active:
+		return
 	var targets_by_device := {}
 	for node in targets:
 		if not node is Player:
 			continue
 		var target := node as Player
+		if not target.gameplay_active or not target.is_in_group("player") or target.is_queued_for_deletion():
+			continue
 		target.vibration_requested.emit(target.player_id)
 		if not InputRouter.is_joypad(target.input_device):
 			continue
@@ -356,8 +421,8 @@ func _drop_position(origin: Vector3) -> Vector3:
 	var min_r: float = Config.balance.drop_scatter_min_radius
 	var max_r: float = maxf(min_r, Config.balance.drop_scatter_radius)
 	for _attempt in 12:
-		var ang := randf() * TAU
-		var d := randf_range(min_r, max_r)
+		var ang := (_scatter_rng.randf() if _scatter_rng != null else randf()) * TAU
+		var d := _scatter_rng.randf_range(min_r, max_r) if _scatter_rng != null else randf_range(min_r, max_r)
 		var p := origin + Vector3(cos(ang), 0.0, sin(ang)) * d
 		if absf(p.x) <= bx and absf(p.z) <= bz:
 			return Vector3(p.x, 0.0, p.z)
@@ -431,7 +496,7 @@ func _create_audio_player(node_name: String, stream: AudioStream) -> AudioStream
 
 
 func _play_audio(player: AudioStreamPlayer) -> void:
-	if player == null:
+	if not gameplay_active or player == null:
 		return
 	player.stop()
 	player.play()
@@ -439,7 +504,7 @@ func _play_audio(player: AudioStreamPlayer) -> void:
 
 ## 密集したフンを連続取得した場合も、直前の取得音を打ち切らず重ねて鳴らす。
 func _play_audio_overlapping(player: AudioStreamPlayer) -> void:
-	if player != null:
+	if gameplay_active and player != null:
 		player.play()
 
 
@@ -454,7 +519,7 @@ func _stop_charge_audio() -> void:
 
 ## 音源の末尾まで到達しても予備動作中なら、予備動作が終わるまで繰り返す。
 func _on_charge_audio_finished() -> void:
-	if state == State.DASH_WINDUP:
+	if gameplay_active and state == State.DASH_WINDUP:
 		_charge_audio.play()
 
 ## SDL mini-gamepadモードはL/Rどちらも横持ち補正済みの左スティック軸として公開する。

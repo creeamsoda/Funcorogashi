@@ -16,7 +16,7 @@ func _ready() -> void:
 	# 数秒回して動物ドロップを確認 → その後 残時間を詰めて即終了させる
 	await get_tree().create_timer(3.0).timeout
 	var pickups := 0
-	var dung := gm.get_node_or_null("Dung")
+	var dung := gm.get_node_or_null("World/Dung")
 	if dung != null:
 		pickups = dung.get_child_count()
 
