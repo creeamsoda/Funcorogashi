@@ -95,6 +95,22 @@ func dash_charge_ratio(held_time: float) -> float:
 @export var pickup_se_neutral_max: float = 1.2     ## この獲得量までは通常SE(動物フン約2個分)
 @export var pickup_se_high_high_min: float = 2.5   ## この獲得量以上は最大級SE(巨大プレイヤーの分裂フン目安)
 
+@export_group("Dung Flee")
+@export var flee_enabled: bool = true              ## 地面フンがプレイヤーから逃げるか
+@export var flee_detect_radius: float = 5.0        ## 逃げ始める距離(m)。プレイヤーの球の縁からフンの縁まで
+@export var flee_panic_distance: float = 2.5       ## この距離まで近づかれると全速で逃げる(m)。検知半径〜ここで速度が上がる
+@export var flee_speed: float = 6.5                ## 逃げる最高速度(m/s)。通常移動 move_speed_base より少し速く、突進よりは遅く
+@export var flee_accel: float = 30.0               ## 加速度(m/s²)。小さいほど突進の急接近に反応しきれない
+@export var flee_reaction_time: float = 0.2        ## 逃げる方向を考え直す間隔(秒)
+@export var flee_turn_rate: float = 360.0          ## 向きを変える速さ(度/秒)
+@export var flee_look_ahead: float = 3.0           ## 進む先の空きを調べる距離(m)。壁を早めに避ける
+@export var flee_sample_dirs: int = 16             ## 進む方向の候補数
+@export var flee_weight_flee: float = 1.0          ## 採点: 逃げたい方向との一致の重み
+@export var flee_weight_space: float = 0.8         ## 採点: 前方の空きの重み(大きいほど壁沿いに逃げやすい)
+@export var flee_stamina: float = 0.0              ## 連続で逃げられる秒数。超えると減速。0 = 無効
+@export var flee_tired_speed_ratio: float = 0.5    ## 疲れた時の速度倍率
+@export var flee_speed_size_penalty: float = 0.0   ## 大きいフンほど遅く(速度 / (1 + これ×サイズ))。0 = 無効
+
 @export_group("Animals")
 @export var animal_spawn_interval_min: float = 2.0 ## 出現間隔の下限(秒)
 @export var animal_spawn_interval_max: float = 4.0 ## 出現間隔の上限(秒)
