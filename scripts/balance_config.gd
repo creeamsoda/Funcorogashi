@@ -9,6 +9,12 @@ extends Resource
 @export var match_duration: float = 180.0          ## 制限時間(秒)
 @export var player_count: int = 4                  ## 同時プレイ人数
 
+@export_group("Stage Layout")
+## 対戦のフェンス配置(Stage.LAYOUT_PATHS の順)。試合開始時に反映(パネルで変えたらリトライ)。
+@export_enum("Open", "Center", "Corners", "Lanes") var stage_layout: int = 1
+## 一人プレイのフェンス配置。固定コースがフェンス前提でないため当面 Open。
+@export_enum("Open", "Center", "Corners", "Lanes") var solo_stage_layout: int = 0
+
 @export_group("Solo NPC")
 @export var solo_npc_speed: float = 3.0            ## 横断の経路進行速度(m/s)
 @export var solo_npc_initial_size: float = 12.0    ## 出現時の保有フン量

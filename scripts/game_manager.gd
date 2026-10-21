@@ -55,7 +55,9 @@ func _ready() -> void:
 	_world = Node3D.new()
 	_world.name = "World"
 	add_child(_world)
-	_world.add_child(load("res://scenes/Stage.tscn").instantiate())
+	var stage := load("res://scenes/Stage.tscn").instantiate() as Stage
+	stage.layout = Stage.load_layout(Config.balance.solo_stage_layout if mode == "solo" else Config.balance.stage_layout)
+	_world.add_child(stage)
 
 	_dung = Node3D.new()
 	_dung.name = "Dung"

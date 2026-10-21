@@ -26,6 +26,7 @@ var _body_shape: SphereShape3D   ## 壁との衝突判定
 var _collect_area: Area3D
 var _spawned_at: float
 var _collected := false
+var _placed := false  ## 生成位置のフェンス押し出しを済ませたか(生成側は add_child 後に位置を設定するため初回物理フレームで行う)
 
 ## 逃走状態
 var _threat_dir := Vector3.ZERO  ## 脅威から離れたい方向(重み付き合計)
@@ -60,6 +61,9 @@ func _process(_dt: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not _placed:
+		_placed = true
+		_push_out_of_fences()
 	if _collected or not Config.balance.flee_enabled:
 		return
 	_rethink_t -= delta
@@ -90,6 +94,13 @@ func _on_body_entered(body: Node) -> void:
 	p.play_pickup_se(gain)
 	collected.emit(gain)
 	queue_free()
+
+
+## 動物やドロップがフェンスに重なる位置へ落ちた場合、フェンスの外へ出す。
+func _push_out_of_fences() -> void:
+	var stage := get_tree().get_first_node_in_group("stage") as Stage
+	if stage != null and stage.fence_count() > 0:
+		global_position = stage.push_out_of_fences(global_position, _radius() + 0.1)
 
 
 ## --- 逃走 ---

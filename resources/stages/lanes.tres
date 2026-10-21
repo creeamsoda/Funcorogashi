@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="StageLayout" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/stage_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/fence_spec.gd" id="2_fence"]
+
+[sub_resource type="Resource" id="fence_0"]
+script = ExtResource("2_fence")
+center = Vector2(-6.0, -4.0)
+length = 14.0
+rotation_deg = 0.0
+
+[sub_resource type="Resource" id="fence_1"]
+script = ExtResource("2_fence")
+center = Vector2(6.0, 4.0)
+length = 14.0
+rotation_deg = 0.0
+
+[resource]
+script = ExtResource("1_layout")
+layout_id = "lanes"
+display_name = "ずらした仕切り"
+fences = Array[ExtResource("2_fence")]([SubResource("fence_0"), SubResource("fence_1")])
