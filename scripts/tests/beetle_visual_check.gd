@@ -53,7 +53,7 @@ func _ready() -> void:
 		Vector3(1, 0, 1).normalized(), Vector3(3, 0, -2).normalized(),
 	]
 	var states: Array[Player.State] = [
-		Player.State.ROLLING, Player.State.DASH_WINDUP,
+		Player.State.ROLLING, Player.State.DASH_CHARGING,
 		Player.State.DASHING, Player.State.STUNNED,
 	]
 	var checked := 0
@@ -65,7 +65,7 @@ func _ready() -> void:
 				player.facing = direction
 				player.state = state
 				player._dash_dir = direction
-				player._windup_t = 1.0
+				player._charge_t = 1.0
 				player._stun_t = 1.0
 				player._physics_process(0.0)
 				var head_center: Vector3 = head.global_transform * head.get_aabb().get_center()

@@ -148,7 +148,7 @@ func _test_three_hits() -> void:
 		for _i in 2:
 			await get_tree().physics_frame
 		human._start_dash()
-		await get_tree().create_timer(Config.balance.dash_windup + 0.5).timeout
+		await get_tree().create_timer(Config.balance.dash_charge_min + 0.5).timeout
 		_expect(observed.hits == hit_index + 1, "each physical dash emits exactly one hit")
 		_expect(is_equal_approx(npc.size, 8.0 * pow(0.5, hit_index + 1)),
 			"three dash sizes are one half, one quarter, one eighth")
@@ -181,7 +181,7 @@ func _test_dash_input_suppression() -> void:
 	human._physics_process(1.0 / 60.0)
 	_set_dash_key(true)
 	human._physics_process(1.0 / 60.0)
-	_expect(human.state == Player.State.DASH_WINDUP and observed.starts == 1,
+	_expect(human.state == Player.State.DASH_CHARGING and observed.starts == 1,
 		"release then press starts exactly one dash")
 	_set_dash_key(false) # 成否にかかわらず、合成入力を必ず解放する。
 	human.stop_gameplay()

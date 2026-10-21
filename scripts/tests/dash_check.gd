@@ -1,7 +1,8 @@
 extends Node3D
 ## 突進判定の headless 自動テスト(操作不要):
-##  命中(相手ドロップ・自分無傷)/ 自滅(壁で自分ドロップ)/ 相打ち(両者ドロップ)
+##  命中(相手ドロップ・自分無傷)/ 壁激突(既定はスタンのみ)/ 相打ち(両者ドロップ)/ 溜め / 曲げ
 ## プレイヤーの facing を設定して _start_dash() を直接呼び、結果を検証する。
+## 入力なし(待機デバイス)なので、_start_dash() 後は最低溜めで自動的に発動する。
 
 var _dung: Node3D
 
@@ -17,12 +18,15 @@ func _ready() -> void:
 	var r_loss := await _test_drop_loss()
 	var r_vibration_routing := await _test_shared_device_vibration_routing()
 	var r_audio := await _test_dash_audio()
+	var r_charge := await _test_charge()
+	var r_steer := await _test_steer()
 
-	var ok := r_hit and r_wall and r_mutual and r_loss and r_vibration_routing and r_audio
+	var ok := r_hit and r_wall and r_mutual and r_loss and r_vibration_routing and r_audio \
+		and r_charge and r_steer
 	print("[dash_check] result=", ("PASS" if ok else "FAIL"),
-		"  hit=", r_hit, " self_crash=", r_wall, " mutual=", r_mutual,
+		"  hit=", r_hit, " wall=", r_wall, " mutual=", r_mutual,
 		" drop_loss=", r_loss, " vibration_routing=", r_vibration_routing,
-		" audio=", r_audio)
+		" audio=", r_audio, " charge=", r_charge, " steer=", r_steer)
 	get_tree().quit(0 if ok else 1)
 
 
@@ -54,20 +58,131 @@ func _test_hit() -> bool:
 	return ok
 
 
+## 壁激突は既定でスタンのみ(サイズ不変・ドロップなし)。wall_crash_drops=true で従来どおり落とす。
 func _test_wall() -> bool:
-	var p := _mk(0, Vector3(10, 0, 0), Vector3(1, 0, 0))
+	var stun_only := await _wall_crash(false)
+	var drops := await _wall_crash(true)
+	return stun_only and drops
+
+
+func _wall_crash(drops_enabled: bool) -> bool:
+	var old_flag: bool = Config.balance.wall_crash_drops
+	Config.balance.wall_crash_drops = drops_enabled
+	var p := _mk(0, Vector3(14, 0, 0), Vector3(1, 0, 0))
 	await _frames(2)
 	var s0: float = p.size
+	var dc0: int = _dung.get_child_count()
 	var vibrations := {"count": 0}
 	p.vibration_requested.connect(func(_pid: int) -> void: vibrations["count"] += 1)
 	p.facing = Vector3(1, 0, 0)
 	p._start_dash()
 	await _seconds(0.9)
 	var wall_se_playing: bool = (p.get_node("WallHitSE") as AudioStreamPlayer).playing
-	var ok: bool = p.size < s0 and p.state == Player.State.STUNNED \
+	var size_ok: bool = p.size < s0 if drops_enabled else is_equal_approx(p.size, s0) and _dung.get_child_count() == dc0
+	var ok: bool = size_ok and p.state == Player.State.STUNNED \
 		and vibrations["count"] == 1 and wall_se_playing
-	print("  [wall] size ", s0, "->", p.size, " state=", p.state,
+	print("  [wall drops=", drops_enabled, "] size ", s0, "->", p.size, " state=", p.state,
 		" vibration=", vibrations["count"], " wall_se=", wall_se_playing)
+	Config.balance.wall_crash_drops = old_flag
+	_free([p])
+	await _frames(2)
+	return ok
+
+
+## 溜め: 押している間は発動せず、離すと発動。溜め量で速度・継続時間が下限〜上限に補間される。
+## 最低溜め前に離しても最低溜めまで待ち、押し続けると hold_max 後に自動発動する。
+func _test_charge() -> bool:
+	var b := Config.balance
+	var p := _mk(0, Vector3(-15, 0, -9), Vector3(1, 0, 0))
+	p.set_physics_process(false)
+	await _frames(2)
+	var dt := 1.0 / 60.0
+
+	p._start_dash()
+	p._process_charging(dt, false)
+	var waits_for_min := p.state == Player.State.DASH_CHARGING
+	while p.state == Player.State.DASH_CHARGING:
+		p._process_charging(dt, false)
+	var min_ok := p.state == Player.State.DASHING \
+		and is_equal_approx(p._dash_speed, b.dash_speed_min) and is_equal_approx(p._dash_duration, b.dash_duration_min)
+
+	p._end_dash()
+	p._start_dash()
+	var held_frames := 0
+	while held_frames < int(b.dash_charge_time / dt) + 2:
+		p._process_charging(dt, true)
+		held_frames += 1
+	var held_keeps_charging := p.state == Player.State.DASH_CHARGING
+	p._process_charging(dt, false)
+	var max_ok := p.state == Player.State.DASHING \
+		and is_equal_approx(p._dash_speed, b.dash_speed_max) and is_equal_approx(p._dash_duration, b.dash_duration_max)
+
+	p._end_dash()
+	p._start_dash()
+	p._charge_t = b.dash_charge_time + b.dash_charge_hold_max
+	p._process_charging(dt, true)
+	var auto_release := p.state == Player.State.DASHING
+
+	var mid := b.dash_charge_ratio((b.dash_charge_min + b.dash_charge_time) * 0.5)
+	var ratio_ok := b.dash_charge_ratio(0.0) == 0.0 and b.dash_charge_ratio(b.dash_charge_time) == 1.0 \
+		and mid > 0.0 and mid < 1.0
+
+	var ok := waits_for_min and min_ok and held_keeps_charging and max_ok and auto_release and ratio_ok
+	print("  [charge] waits_min=", waits_for_min, " min=", min_ok, " held=", held_keeps_charging,
+		" max=", max_ok, " auto=", auto_release, " ratio=", ratio_ok)
+	_free([p])
+	await _frames(2)
+	return ok
+
+
+## 突進中の曲げは旋回上限(度/秒)まで。最大溜めは最小溜めより曲がりにくい。減速後に止まる。
+class SteerPlayer extends Player:
+	var stick := Vector2.ZERO
+	func _read_move() -> Vector2:
+		return stick
+
+
+func _test_steer() -> bool:
+	var b := Config.balance
+	var p := SteerPlayer.new()
+	p.player_id = 0
+	p.input_device = 9999
+	add_child(p)
+	p.global_position = Vector3(-15, 0, 0)
+	p.set_physics_process(false)
+	await _frames(2)
+	var dt := 1.0 / 60.0
+
+	var turned := {}
+	for label in ["min", "max"]:
+		p.global_position = Vector3(-15, p.body_radius(), 0)
+		p.facing = Vector3(1, 0, 0)
+		p.stick = Vector2.ZERO
+		p._start_dash()
+		p._charge_t = b.dash_charge_min if label == "min" else b.dash_charge_time
+		p._process_charging(dt, false)
+		p.stick = Vector2(0, 1) # 真横(+Z)へ曲げたい
+		p._process_dashing(0.1)
+		turned[label] = rad_to_deg(Vector3(1, 0, 0).angle_to(p._dash_dir))
+		p._end_dash()
+	var min_ok := absf(turned["min"] - b.dash_turn_rate * 0.1) < 0.5
+	var max_ok := absf(turned["max"] - b.dash_turn_rate_at_max * 0.1) < 0.5
+
+	p.global_position = Vector3(-15, p.body_radius(), 0)
+	p.facing = Vector3(1, 0, 0)
+	p.stick = Vector2.ZERO
+	p._start_dash()
+	p._process_charging(b.dash_charge_min, false)
+	var steps := 0
+	while p.state == Player.State.DASHING and steps < 600:
+		p._process_dashing(dt)
+		steps += 1
+	var stops := p.state == Player.State.ROLLING \
+		and absf(steps * dt - (b.dash_duration_min + b.dash_end_decel_time)) < dt * 2.0
+
+	var ok := min_ok and max_ok and stops
+	print("  [steer] turned_min=", snappedf(turned["min"], 0.1), " turned_max=", snappedf(turned["max"], 0.1),
+		" stops_after=", snappedf(steps * dt, 0.01), "s ok=", min_ok, "/", max_ok, "/", stops)
 	_free([p])
 	await _frames(2)
 	return ok
@@ -177,8 +292,8 @@ func _test_dash_audio() -> bool:
 	charge.stop()
 	p._on_charge_audio_finished()
 	var charge_repeated := charge.playing
-	p._windup_t = 0.0
-	p._process_windup(0.0)
+	p._charge_t = Config.balance.dash_charge_min
+	p._process_charging(0.0, false)
 	var switched_to_dash := not charge.playing and dash.playing \
 		and p.state == Player.State.DASHING
 

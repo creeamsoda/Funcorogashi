@@ -1,6 +1,6 @@
 extends Node3D
 ## ドロップ散らばりの headless 自動テスト:
-##  壁際で自滅させ、生成フンが (1)アリーナ内に収まる (2)本人から一定距離離れている を検証。
+##  壁際で被弾ドロップさせ、生成フンが (1)アリーナ内に収まる (2)本人から一定距離離れている を検証。
 ##  drop_scatter_radius を大きめにして場外飛び出しを誘発しても内側に収まることを確認。
 
 func _ready() -> void:
@@ -21,9 +21,8 @@ func _ready() -> void:
 	p.facing = Vector3(1, 0, 0)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	p.facing = Vector3(1, 0, 0)
-	p._start_dash()
-	await get_tree().create_timer(0.9).timeout
+	p.drop_and_stun() # 壁激突はスタンのみなので、被弾と同じドロップを直接起こす
+	await get_tree().physics_frame
 
 	var origin := p.global_position
 	var min_r: float = Config.balance.drop_scatter_min_radius

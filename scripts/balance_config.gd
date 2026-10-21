@@ -51,13 +51,31 @@ func radius_for_size(amount: float, scale: float) -> float:
 @export var move_speed_size_penalty: float = 0.0   ## サイズ連動の減速(0 = 無効。MVP既定オフ)
 
 @export_group("Dash")
-@export var dash_cooldown: float = 1.5             ## クールタイム(秒)
-@export var dash_windup: float = 0.25              ## 前隙(予備動作, 秒)
-@export var dash_speed: float = 16.0               ## 突進速度(m/s)
-@export var dash_max_time: float = 1.5             ## 突進継続の安全上限(秒)。距離は無限だが保険
+@export var dash_cooldown: float = 1.5             ## クールタイム(秒)。突進開始(ボタンを離した時)から数える
 @export var stun_duration: float = 1.0             ## スタン時間(秒)
 @export var dash_knockback_speed: float = 8.0      ## 相打ち時ノックバック初速
 @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
+@export var wall_crash_drops: bool = false         ## 壁激突でフンを落とすか(false = スタンのみ)
+
+@export_group("Dash Charge")
+@export var dash_charge_min: float = 0.15          ## 最低溜め時間(秒)。これより早く離しても溜め切ってから発動(予備動作)
+@export var dash_charge_time: float = 1.0          ## 押し始めから最大溜めになるまでの時間(秒)
+@export var dash_charge_hold_max: float = 2.0      ## 最大溜めのまま押し続けると自動発動するまでの秒数。0 = 無効
+@export var dash_charge_curve: float = 1.0         ## 溜め量の補間カーブ(ease)。1 = 線形、>1 = 終盤で伸びる
+@export var dash_charge_move_ratio: float = 0.2    ## 溜め中の移動速度倍率
+@export var dash_speed_min: float = 10.0           ## 最小溜めの突進速度(m/s)
+@export var dash_speed_max: float = 20.0           ## 最大溜めの突進速度(m/s)
+@export var dash_duration_min: float = 0.35        ## 最小溜めの突進継続時間(秒)
+@export var dash_duration_max: float = 0.8         ## 最大溜めの突進継続時間(秒)
+@export var dash_end_decel_time: float = 0.15      ## 継続時間の後、停止までの減速時間(秒)
+@export var dash_turn_rate: float = 120.0          ## 最小溜め時の突進中の曲がりやすさ(度/秒)
+@export var dash_turn_rate_at_max: float = 60.0    ## 最大溜め時の突進中の曲がりやすさ(度/秒)
+
+
+## 溜め時間(秒) → 0..1 の溜め量。最低溜めで0、最大溜めで1。
+func dash_charge_ratio(held_time: float) -> float:
+	var span := maxf(dash_charge_time - dash_charge_min, 0.001)
+	return ease(clampf((held_time - dash_charge_min) / span, 0.0, 1.0), maxf(dash_charge_curve, 0.01))
 
 @export_group("Joy-Con Vibration")
 @export_range(0.0, 1.0, 0.01) var joy_vibration_weak_magnitude: float = 0.25 ## 低周波側の振動強度

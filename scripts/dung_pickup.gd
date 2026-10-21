@@ -29,6 +29,7 @@ func _ready() -> void:
 	_spawned_at = _now()
 	_build_visual()
 	body_entered.connect(_on_body_entered)
+	add_to_group(DebugOverlay.GROUP)
 
 
 func _process(_dt: float) -> void:
@@ -51,6 +52,11 @@ func _on_body_entered(body: Node) -> void:
 	p.play_pickup_se(gain)
 	collected.emit(gain)
 	queue_free()
+
+
+## F2 デバッグ表示: 回収判定の範囲。
+func debug_draw(overlay: DebugOverlay) -> void:
+	overlay.circle(Vector3(global_position.x, 0.05, global_position.z), _shape.radius, Color(1.0, 0.85, 0.2))
 
 
 func _radius() -> float:

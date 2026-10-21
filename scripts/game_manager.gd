@@ -8,6 +8,7 @@ signal match_ended(results: Array)
 const SPAWN_SPOTS := [
 	Vector3(-9, 0, -6), Vector3(9, 0, -6), Vector3(-9, 0, 6), Vector3(9, 0, 6),
 ]
+const SPAWN_SPOTS_2P := [Vector3(-9, 0, 0), Vector3(9, 0, 0)] ## 2人は左右中央に対称配置
 const CROWN_HIDE_TIME := 30.0
 
 @export_enum("session", "versus", "solo") var mode := "session"
@@ -81,14 +82,19 @@ func _ready() -> void:
 	else:
 		_hud.setup(players.size())
 	_hud.set_time(time_left)
+	if OS.is_debug_build():
+		var debug_tools := DebugTools.new()
+		debug_tools.name = "DebugTools"
+		add_child(debug_tools)
 	_running = true
 	if _director != null:
 		_director.advance_to(0.0)
 
 
 func _spawn_players() -> void:
-	var n: int = 1 if mode == "solo" else clampi(Config.balance.player_count, 1, 4)
+	var n: int = 1 if mode == "solo" else InputRouter.versus_player_count(clampi(Config.balance.player_count, 1, 4))
 	var srcs := InputRouter.sources(n)
+	var spots: Array = SPAWN_SPOTS_2P if n == 2 else SPAWN_SPOTS
 	for i in n:
 		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 		p.player_id = i
@@ -96,7 +102,7 @@ func _spawn_players() -> void:
 		if mode == "solo":
 			p.set_scatter_seed(173 + i)
 		_world.add_child(p)
-		p.global_position = course.player_start if mode == "solo" else SPAWN_SPOTS[i % SPAWN_SPOTS.size()]
+		p.global_position = course.player_start if mode == "solo" else spots[i % spots.size()]
 		p.suppress_dash_until_release()
 		players.append(p)
 		stats[i] = {"dash_hits": 0, "pickups": 0}

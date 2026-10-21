@@ -1,9 +1,10 @@
 class_name Player
 extends CharacterBody3D
 ## プレイヤー(フンコロガシ)。フン球を転がして移動し、接触でサイズが増える。
-## 突進: ROLLING→DASH_WINDUP(前隙)→DASHING→(判定)→STUNNED。
-##   壁=自滅 / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
-##   被弾・自滅で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
+## 突進: ROLLING→DASH_CHARGING(長押しで溜め)→離して DASHING→(判定)→STUNNED。
+##   溜めるほど速く長く進み、突進中もスティックで少し曲がれる。継続時間を過ぎたら減速して止まる。
+##   壁=スタンのみ(wall_crash_drops で従来のドロップに戻せる) / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
+##   被弾で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
 
 signal size_changed(player_id: int, size: float)
 signal dashed(player_id: int)
@@ -13,11 +14,17 @@ signal vibration_requested(player_id: int)
 ## 共有デバイス上の全プレイヤーが対象ならtrue。一部だけなら誤振動防止のためfalse。
 signal vibration_route_resolved(device: int, allowed: bool)
 
-enum State { ROLLING, DASH_WINDUP, DASHING, STUNNED }
+enum State { ROLLING, DASH_CHARGING, DASHING, STUNNED }
 
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
 const WINDUP_FLASH_INTERVAL := 0.08
+## 溜め中の方向矢印(見た目のみ)。長さは溜め量で補間する。
+const DASH_ARROW_MIN_LENGTH := 1.0
+const DASH_ARROW_MAX_LENGTH := 3.5
+const DASH_ARROW_WIDTH := 0.35
+const DASH_ARROW_HEAD := 0.8
+const DASH_ARROW_FULL_COLOR := Color(1.0, 0.85, 0.2)
 const BEETLE_SCENE: PackedScene = preload("res://resources/models/beetle/beetle.glb")
 ## 仮キューブの全長0.9を基準に、脚を含むモデル全長を約1.2倍にする。
 const BEETLE_REFERENCE_LENGTH := 0.9
@@ -49,9 +56,9 @@ const JOYCON_DASH_BUTTON := JOY_BUTTON_B
 ## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
 const ARROWS_DASH_KEY := KEY_SLASH
 const WASD_DASH_KEY := KEY_SHIFT
-## アリーナ内寸(Stage.STAGE_SIZE の半分に一致)。ドロップを場外に出さないために使用。
-const ARENA_HX := 18.0
-const ARENA_HZ := 12.0
+## アリーナ内寸の半分。ドロップを場外に出さないために使用。
+const ARENA_HX := Stage.HALF_X
+const ARENA_HZ := Stage.HALF_Z
 const DROP_MARGIN := 0.6
 ## 物理レイヤーのビット値。NPCは専用レイヤーで壁の外から出入りする。
 const WALL_LAYER := 1
@@ -76,8 +83,11 @@ var debug_growth_enabled: bool = false:
 			debug_growth_used = true
 
 var _dash_dir := Vector3(0, 0, -1)
-var _windup_t := 0.0
+var _charge_t := 0.0        ## 溜め開始からの経過(秒)
 var _dash_t := 0.0
+var _dash_speed := 0.0      ## 今回の突進速度(発動時の溜め量で決定)
+var _dash_duration := 0.0   ## 今回の突進継続時間(減速を除く)
+var _dash_turn_rate := 0.0  ## 今回の突進中の旋回上限(度/秒)
 var _stun_t := 0.0
 var _cd_t := 0.0            ## 突進クールタイム残り
 var _kb_vel := Vector3.ZERO ## ノックバック速度(相打ち時)
@@ -93,6 +103,10 @@ var _ball_mi: MeshInstance3D
 var _ball_mat: StandardMaterial3D
 var _ball_shape: SphereShape3D
 var _beetle: Node3D
+var _dash_arrow: Node3D
+var _dash_arrow_shaft: MeshInstance3D
+var _dash_arrow_head: MeshInstance3D
+var _dash_arrow_mat: StandardMaterial3D
 var _beetle_model: Node3D
 var _beetle_meshes: Array[MeshInstance3D] = []
 var _beetle_materials: Array[StandardMaterial3D] = []
@@ -110,6 +124,7 @@ var _get_high_high_audio: AudioStreamPlayer
 
 func _ready() -> void:
 	add_to_group("player") # オランウータンの直撃判定などで参照
+	add_to_group(DebugOverlay.GROUP)
 	collision_layer = HUMAN_LAYER
 	collision_mask = WALL_LAYER | HUMAN_LAYER | NPC_LAYER
 	size = initial_size if initial_size > 0.0 else Config.balance.size_start
@@ -135,8 +150,8 @@ func _physics_process(delta: float) -> void:
 			_process_rolling(delta)
 			if dash_now and not _dash_prev and _cd_t <= 0.0:
 				_start_dash()
-		State.DASH_WINDUP:
-			_process_windup(delta)
+		State.DASH_CHARGING:
+			_process_charging(delta, dash_now)
 		State.DASHING:
 			_process_dashing(delta)
 		State.STUNNED:
@@ -144,6 +159,7 @@ func _physics_process(delta: float) -> void:
 	_dash_prev = dash_now
 	position.y = _radius()
 	_update_beetle()
+	_update_dash_arrow()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -226,6 +242,20 @@ func body_radius() -> float:
 	return _radius()
 
 
+## F2 デバッグ表示: 向き(突進方向)と本体半径。
+func debug_draw(overlay: DebugOverlay) -> void:
+	var base := Vector3(global_position.x, 0.05, global_position.z)
+	var color: Color = PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
+	overlay.line(base, base + facing * 3.0, color)
+	overlay.circle(base, _radius(), color)
+	if state == State.DASH_CHARGING:
+		# 今離した場合の直進距離(曲げなし)。減速区間は平均速度で概算。
+		var ratio := Config.balance.dash_charge_ratio(_charge_t)
+		var reach := _dash_speed_for(ratio) * (_dash_duration_for(ratio) + Config.balance.dash_end_decel_time * 0.5)
+		overlay.line(base, base + facing * reach, Color.WHITE)
+		overlay.circle(base + facing * reach, 0.3, Color.WHITE, 12)
+
+
 ## 現在1位を示す仮の王冠表示。順位判定と残り30秒の制御は GameManager が行う。
 func set_crown_visible(show: bool) -> void:
 	if _crown != null:
@@ -250,33 +280,64 @@ func drop_and_stun(_is_self_crash: bool = false) -> void:
 
 ## --- 突進 ---
 
+## 突進ボタンの押下で溜めを開始する。発動はボタンを離した時(_process_charging)。
 func _start_dash() -> void:
 	if not gameplay_active:
 		return
-	state = State.DASH_WINDUP
-	_windup_t = Config.balance.dash_windup
-	_dash_dir = facing
-	velocity = Vector3.ZERO
-	_cd_t = Config.balance.dash_cooldown
+	state = State.DASH_CHARGING
+	_charge_t = 0.0
 	_play_charge_audio()
 	dashed.emit(player_id)
 
 
-func _process_windup(_delta: float) -> void:
-	velocity = Vector3.ZERO
-	_windup_t -= _delta
-	if _windup_t <= 0.0:
-		_stop_charge_audio()
-		state = State.DASHING
-		_dash_t = 0.0
-		_play_audio(_dash_audio)
+## 溜め中: 低速で移動・向き変更でき、離すと発動。最低溜め前に離しても最低溜めで発動する。
+func _process_charging(delta: float, held: bool) -> void:
+	_charge_t += delta
+	var iv := _read_move()
+	var dir := Vector3(iv.x, 0.0, iv.y)
+	if dir.length() > 0.15:
+		facing = dir.normalized()
+		velocity = facing * Config.balance.move_speed_base * Config.balance.dash_charge_move_ratio * _current_slow()
+	else:
+		velocity = Vector3.ZERO
+	move_and_slide()
+	_roll_ball(delta)
+	var b := Config.balance
+	var auto_release := b.dash_charge_hold_max > 0.0 and _charge_t >= b.dash_charge_time + b.dash_charge_hold_max
+	if (not held and _charge_t >= b.dash_charge_min) or auto_release:
+		_launch_dash()
+
+
+func _launch_dash() -> void:
+	var ratio := Config.balance.dash_charge_ratio(_charge_t)
+	_stop_charge_audio()
+	state = State.DASHING
+	_dash_t = 0.0
+	_dash_dir = facing
+	_dash_speed = _dash_speed_for(ratio)
+	_dash_duration = _dash_duration_for(ratio)
+	_dash_turn_rate = lerpf(Config.balance.dash_turn_rate, Config.balance.dash_turn_rate_at_max, ratio)
+	_cd_t = Config.balance.dash_cooldown
+	_play_audio(_dash_audio)
+
+
+func _dash_speed_for(ratio: float) -> float:
+	return lerpf(Config.balance.dash_speed_min, Config.balance.dash_speed_max, ratio)
+
+
+func _dash_duration_for(ratio: float) -> float:
+	return lerpf(Config.balance.dash_duration_min, Config.balance.dash_duration_max, ratio)
 
 
 func _process_dashing(delta: float) -> void:
 	_dash_t += delta
-	velocity = _dash_dir * Config.balance.dash_speed # 転がし演出用
-	var motion := _dash_dir * Config.balance.dash_speed * delta
-	var col := move_and_collide(motion)
+	_steer_dash(delta)
+	var speed := _dash_speed
+	var decel := maxf(Config.balance.dash_end_decel_time, 0.0)
+	if _dash_t > _dash_duration:
+		speed *= clampf(1.0 - (_dash_t - _dash_duration) / maxf(decel, 0.001), 0.0, 1.0)
+	velocity = _dash_dir * speed # 転がし演出用
+	var col := move_and_collide(_dash_dir * speed * delta)
 	if col != null:
 		var other := col.get_collider()
 		if other is Player:
@@ -284,12 +345,27 @@ func _process_dashing(delta: float) -> void:
 		elif other is Node and (other as Node).is_in_group("wall"):
 			_play_audio(_wall_hit_audio)
 			_play_impact_vibrations([self])
-			drop_and_stun(true) # 壁激突=自滅
+			if Config.balance.wall_crash_drops:
+				drop_and_stun(true)
+			else:
+				_enter_stun()
 		else:
 			_end_dash() # 想定外の障害物はそのまま停止
-	elif _dash_t >= Config.balance.dash_max_time:
-		_end_dash() # 保険(通常は壁かプレイヤーに当たる)
+	elif _dash_t >= _dash_duration + decel:
+		_end_dash()
 	_roll_ball(delta)
+
+
+## スティック方向へ、今回の旋回上限(度/秒)まで突進方向を曲げる。
+func _steer_dash(delta: float) -> void:
+	var iv := _read_move()
+	var want := Vector3(iv.x, 0.0, iv.y)
+	if want.length() <= 0.15:
+		return
+	var angle := _dash_dir.signed_angle_to(want.normalized(), Vector3.UP)
+	var max_step := deg_to_rad(_dash_turn_rate) * delta
+	_dash_dir = _dash_dir.rotated(Vector3.UP, clampf(angle, -max_step, max_step)).normalized()
+	facing = _dash_dir
 
 
 func _resolve_dash_contact(victim: Player) -> void:
@@ -517,9 +593,9 @@ func _stop_charge_audio() -> void:
 		_charge_audio.stop()
 
 
-## 音源の末尾まで到達しても予備動作中なら、予備動作が終わるまで繰り返す。
+## 音源の末尾まで到達しても溜め中なら、発動まで繰り返す。
 func _on_charge_audio_finished() -> void:
-	if gameplay_active and state == State.DASH_WINDUP:
+	if gameplay_active and state == State.DASH_CHARGING:
 		_charge_audio.play()
 
 ## SDL mini-gamepadモードはL/Rどちらも横持ち補正済みの左スティック軸として公開する。
@@ -567,6 +643,7 @@ func _build_visual() -> void:
 	add_child(_ball_mi)
 
 	_build_beetle_visual(col)
+	_build_dash_arrow(col)
 
 	_crown = Label3D.new()
 	_crown.name = "LeaderCrown"
@@ -657,6 +734,61 @@ func _update_beetle() -> void:
 		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else DUNG_COLOR
 
 
+## 足元に平たい矢印(+Z向き)。軸は長さに合わせて伸ばし、先端は固定サイズで先に置く。
+func _build_dash_arrow(player_color: Color) -> void:
+	_dash_arrow = Node3D.new()
+	_dash_arrow.name = "DashArrow"
+	_dash_arrow.visible = false
+	add_child(_dash_arrow)
+	_dash_arrow_mat = StandardMaterial3D.new()
+	_dash_arrow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_dash_arrow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_dash_arrow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_dash_arrow_mat.albedo_color = player_color
+	var shaft_mesh := PlaneMesh.new()
+	shaft_mesh.size = Vector2(DASH_ARROW_WIDTH, 1.0)
+	_dash_arrow_shaft = MeshInstance3D.new()
+	_dash_arrow_shaft.name = "Shaft"
+	_dash_arrow_shaft.mesh = shaft_mesh
+	_dash_arrow_shaft.material_override = _dash_arrow_mat
+	_dash_arrow_shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_dash_arrow.add_child(_dash_arrow_shaft)
+	var head_mesh := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-DASH_ARROW_HEAD * 0.5, 0, 0), Vector3(0, 0, DASH_ARROW_HEAD), Vector3(DASH_ARROW_HEAD * 0.5, 0, 0),
+	])
+	head_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_dash_arrow_head = MeshInstance3D.new()
+	_dash_arrow_head.name = "Head"
+	_dash_arrow_head.mesh = head_mesh
+	_dash_arrow_head.material_override = _dash_arrow_mat
+	_dash_arrow_head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_dash_arrow.add_child(_dash_arrow_head)
+
+
+## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。最大溜めで金色になる。
+func _update_dash_arrow() -> void:
+	if _dash_arrow == null:
+		return
+	_dash_arrow.visible = state == State.DASH_CHARGING and gameplay_active
+	if not _dash_arrow.visible:
+		return
+	var r := _radius()
+	var ratio := Config.balance.dash_charge_ratio(_charge_t)
+	var length := lerpf(DASH_ARROW_MIN_LENGTH, DASH_ARROW_MAX_LENGTH, ratio)
+	_dash_arrow.position = Vector3(0, -r + 0.04, 0)
+	_dash_arrow.rotation.y = atan2(facing.x, facing.z)
+	_dash_arrow_shaft.scale = Vector3(1, 1, length)
+	_dash_arrow_shaft.position = Vector3(0, 0, r + length * 0.5)
+	_dash_arrow_head.position = Vector3(0, 0, r + length)
+	var base: Color = PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
+	var color := base.lerp(DASH_ARROW_FULL_COLOR, ratio)
+	color.a = 0.85
+	_dash_arrow_mat.albedo_color = color
+
+
 ## 状態に応じた本体の色。前隙=白で予備動作を予告 / スタン=灰。
 func _state_tint() -> Color:
 	match state:
@@ -667,9 +799,9 @@ func _state_tint() -> Color:
 
 
 func _windup_flash_on() -> bool:
-	if state != State.DASH_WINDUP:
+	if state != State.DASH_CHARGING:
 		return false
-	return int(_windup_t / WINDUP_FLASH_INTERVAL) % 2 == 0
+	return int(_charge_t / WINDUP_FLASH_INTERVAL) % 2 == 0
 
 
 func _roll_ball(delta: float) -> void:

@@ -18,6 +18,16 @@ static func is_combined_joycon(device: int) -> bool:
 static func is_combined_joycon_name(device_name: String) -> bool:
 	return "Joy-Con" in device_name and "(L/R)" in device_name
 
+## 対戦の参加人数。Joy-Conが2台以上ならその台数(上限 max_players)で始める。
+## 0〜1台はキーボード併用の開発用として max_players のまま。
+static func versus_player_count(max_players: int) -> int:
+	return versus_player_count_from_pads(max_players, known_pads().size())
+
+static func versus_player_count_from_pads(max_players: int, pad_count: int) -> int:
+	if pad_count >= 2:
+		return mini(pad_count, max_players)
+	return max_players
+
 ## プレイヤーindex -> {device:int}
 ## 横持ちのJoy-Conを個別デバイスとして扱い、1デバイスを1人だけに割り当てる。
 ## SDLのJoy-Con自動結合を起動前に無効化し、4人なら4デバイスを公開すること。
