@@ -35,8 +35,16 @@ func _ready() -> void:
 	panel._set_value("dash_speed_max", 23.5)
 	if not is_equal_approx(Config.balance.dash_speed_max, 23.5):
 		failures.append("live_set")
+	# 保存しても tres の uid(本体・スクリプト参照)が消えないこと
+	var seed_file := FileAccess.open(TEMP_PATH, FileAccess.WRITE)
+	seed_file.store_string('[gd_resource type="Resource" script_class="BalanceConfig" format=3 uid="uid://debugcheck1"]\n')
+	seed_file.close()
 	if panel.save_to_file(TEMP_PATH) != OK:
 		failures.append("save")
+	var saved := FileAccess.get_file_as_string(TEMP_PATH)
+	var script_uid := FileAccess.get_file_as_string("res://scripts/balance_config.gd.uid").strip_edges()
+	if not ('uid="uid://debugcheck1"' in saved and ('uid="%s"' % script_uid) in saved):
+		failures.append("save_keeps_uid")
 	Config.balance.dash_speed_max = 1.0
 	panel.reload_from_file(TEMP_PATH)
 	if not is_equal_approx(Config.balance.dash_speed_max, 23.5):

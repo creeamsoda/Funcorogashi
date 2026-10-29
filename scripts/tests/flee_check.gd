@@ -4,7 +4,7 @@ extends Node3D
 ##  corner : 角へ追い込めば取れる
 ##  pincer : 壁際で2人で挟めば取れる
 ##  dash   : 最大溜めの突進なら開けた場所でも取れる
-##  drop   : 被弾で落ちたフンは即座に逃げ始める
+##  drop   : 被弾で落ちたフンは即座に逃げ始める(その場で回ってから進む)
 ##  stunned: スタン中のプレイヤーからは逃げない
 ## 各シナリオの所要時間を出力するので、調整時の目安にも使う。
 
@@ -117,12 +117,13 @@ func _test_drop() -> bool:
 			var edge := pk.global_position.distance_to(attacker.global_position) - attacker.body_radius() - pk._radius()
 			if edge < Config.balance.flee_detect_radius - 0.5:
 				start[pk] = pk.global_position
-	await get_tree().create_timer(0.4).timeout
+	# 止まっている所から回ってから進み出すので、その時間を含めて待つ
+	await get_tree().create_timer(0.8).timeout
 	var moved := 0
 	for pk in start:
 		if is_instance_valid(pk) and (pk as DungPickup).global_position.distance_to(start[pk]) > 0.3:
 			moved += 1
-	_report.append("  [drop] near_attacker=%d moved_in_0.4s=%d" % [start.size(), moved])
+	_report.append("  [drop] near_attacker=%d moved_in_0.8s=%d" % [start.size(), moved])
 	_cleanup([victim, attacker])
 	for child in _dung.get_children():
 		child.queue_free()

@@ -166,9 +166,41 @@ func _set_value(key: String, value: Variant) -> void:
 
 
 func save_to_file(path: String = Config.BALANCE_PATH) -> Error:
+	var resource_uid := _read_header_uid(path)
 	var err := ResourceSaver.save(Config.balance, path)
+	if err == OK:
+		_restore_uids(path, resource_uid)
 	_status.text = "保存しました: %s" % path if err == OK else "保存に失敗: %s" % error_string(err)
 	return err
+
+
+## 実行中の保存では uid が書かれず、保存のたびに tres の差分が出るため、元の uid を書き戻す。
+func _read_header_uid(path: String) -> String:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	var found := RegEx.create_from_string('uid="(uid://[a-z0-9]+)"').search(file.get_line())
+	if found != null:
+		return found.get_string(1)
+	var id := ResourceLoader.get_resource_uid(path)
+	return ResourceUID.id_to_text(id) if id != ResourceUID.INVALID_ID else ""
+
+
+func _restore_uids(path: String, resource_uid: String) -> void:
+	var script_path: String = Config.balance.get_script().resource_path
+	var script_uid := FileAccess.get_file_as_string(script_path + ".uid").strip_edges()
+	var text := FileAccess.get_file_as_string(path)
+	var lines := text.split("\n")
+	for i in lines.size():
+		var line := lines[i]
+		if i == 0 and resource_uid != "" and line.begins_with("[gd_resource") and not "uid=" in line:
+			lines[i] = line.trim_suffix("]") + ' uid="%s"]' % resource_uid
+		elif script_uid.begins_with("uid://") and line.begins_with("[ext_resource") \
+				and ('path="%s"' % script_path) in line and not "uid=" in line:
+			lines[i] = line.replace(' path="', ' uid="%s" path="' % script_uid)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string("\n".join(lines))
 
 
 ## ディスク上の tres を読み直し、同じ Config.balance インスタンスへ値を書き戻す(参照を保つ)。

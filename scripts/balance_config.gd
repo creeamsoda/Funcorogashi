@@ -106,9 +106,16 @@ func dash_charge_ratio(held_time: float) -> float:
 @export var flee_detect_radius: float = 5.0        ## 逃げ始める距離(m)。プレイヤーの球の縁からフンの縁まで
 @export var flee_panic_distance: float = 2.5       ## この距離まで近づかれると全速で逃げる(m)。検知半径〜ここで速度が上がる
 @export var flee_speed: float = 6.5                ## 逃げる最高速度(m/s)。通常移動 move_speed_base より少し速く、突進よりは遅く
-@export var flee_accel: float = 30.0               ## 加速度(m/s²)。小さいほど突進の急接近に反応しきれない
+@export var flee_accel: float = 30.0               ## 前への加速度(m/s²)。小さいほど突進の急接近に反応しきれない
 @export var flee_reaction_time: float = 0.2        ## 逃げる方向を考え直す間隔(秒)
-@export var flee_turn_rate: float = 360.0          ## 向きを変える速さ(度/秒)
+@export var flee_turn_rate_stopped: float = 540.0  ## 止まっている時の旋回速度(度/秒)。前進が速いほど at_speed へ近づく
+@export var flee_turn_rate_at_speed: float = 90.0  ## flee_speed で走っている時の旋回速度(度/秒)
+@export_range(0.0, 180.0, 1.0) var flee_small_turn_angle: float = 30.0 ## 進みたい方向とのなす角がこれ未満なら減速最小限で曲がる
+@export_range(0.0, 180.0, 1.0) var flee_sharp_turn_angle: float = 90.0 ## これ以上なら大きく減速しながら回転し、向きが合ったら再加速
+@export var flee_small_turn_speed_ratio: float = 0.9 ## 曲がっている間(小・中の角度)の目標速度倍率
+@export var flee_turn_hold_time: float = 0.5       ## 中くらいの角度の時、最後の回転からこの秒数は曲がらず直進
+@export var flee_brake_decel: float = 25.0         ## 急旋回・停止時の減速度(m/s²)
+@export var flee_sharp_turn_min_speed: float = 0.0 ## 急旋回中に落とす速度の下限(m/s)。0 = 止まってから回る
 @export var flee_look_ahead: float = 3.0           ## 進む先の空きを調べる距離(m)。壁を早めに避ける
 @export var flee_sample_dirs: int = 16             ## 進む方向の候補数
 @export var flee_weight_flee: float = 1.0          ## 採点: 逃げたい方向との一致の重み
