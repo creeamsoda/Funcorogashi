@@ -54,7 +54,30 @@ func radius_for_size(amount: float, scale: float) -> float:
 
 @export_group("Movement")
 @export var move_speed_base: float = 6.0           ## 基本移動速度(m/s)
-@export var move_speed_size_penalty: float = 0.0   ## サイズ連動の減速(0 = 無効。MVP既定オフ)
+
+@export_group("Size Effects")
+## 保有フンが大きいほど遅く・溜めが長くなる。どちらも開始サイズからの増加分(内部サイズ=スコア)で決まる。
+@export var move_speed_size_penalty: float = 0.03  ## 移動の減速度合い。速度 = 基本 / (1 + これ × 増加分)。0 = 無効
+@export_range(0.05, 1.0, 0.01) var move_speed_size_min_ratio: float = 0.5 ## 減速の下限(基本速度に対する倍率)
+@export var dash_charge_size_penalty: float = 0.03 ## 溜め時間の延び度合い。最大溜めまでの時間 = 基本 × (1 + これ × 増加分)。0 = 無効
+@export var dash_charge_size_max_ratio: float = 2.0 ## 溜め時間の延びの上限(基本に対する倍率)
+
+
+## 開始サイズからの増加分。
+func size_growth(amount: float) -> float:
+	return maxf(amount - size_start, 0.0)
+
+
+## 保有サイズによる移動速度の倍率(1 = 減速なし)。溜め中の移動にも掛かる。
+func move_speed_scale(amount: float) -> float:
+	var scale := 1.0 / (1.0 + maxf(move_speed_size_penalty, 0.0) * size_growth(amount))
+	return maxf(scale, clampf(move_speed_size_min_ratio, 0.0, 1.0))
+
+
+## 保有サイズによる「最大溜めまでの時間」の倍率(1 = 延びなし)。最低溜め時間は延ばさない。
+func charge_time_scale(amount: float) -> float:
+	var scale := 1.0 + maxf(dash_charge_size_penalty, 0.0) * size_growth(amount)
+	return minf(scale, maxf(dash_charge_size_max_ratio, 1.0))
 
 @export_group("Dash")
 @export var dash_cooldown: float = 1.5             ## クールタイム(秒)。突進開始(ボタンを離した時)から数える
@@ -79,8 +102,9 @@ func radius_for_size(amount: float, scale: float) -> float:
 
 
 ## 溜め時間(秒) → 0..1 の溜め量。最低溜めで0、最大溜めで1。
-func dash_charge_ratio(held_time: float) -> float:
-	var span := maxf(dash_charge_time - dash_charge_min, 0.001)
+## time_scale は最大溜めまでの時間の倍率(保有サイズによる延び。charge_time_scale)。
+func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
+	var span := maxf(dash_charge_time * maxf(time_scale, 0.01) - dash_charge_min, 0.001)
 	return ease(clampf((held_time - dash_charge_min) / span, 0.0, 1.0), maxf(dash_charge_curve, 0.01))
 
 @export_group("Joy-Con Vibration")

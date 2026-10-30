@@ -20,13 +20,14 @@ func _ready() -> void:
 	var r_audio := await _test_dash_audio()
 	var r_charge := await _test_charge()
 	var r_steer := await _test_steer()
+	var r_size := await _test_size_effects()
 
 	var ok := r_hit and r_wall and r_mutual and r_loss and r_vibration_routing and r_audio \
-		and r_charge and r_steer
+		and r_charge and r_steer and r_size
 	print("[dash_check] result=", ("PASS" if ok else "FAIL"),
 		"  hit=", r_hit, " wall=", r_wall, " mutual=", r_mutual,
 		" drop_loss=", r_loss, " vibration_routing=", r_vibration_routing,
-		" audio=", r_audio, " charge=", r_charge, " steer=", r_steer)
+		" audio=", r_audio, " charge=", r_charge, " steer=", r_steer, " size=", r_size)
 	get_tree().quit(0 if ok else 1)
 
 
@@ -305,6 +306,51 @@ func _test_dash_audio() -> bool:
 	print("  [dash_audio] loaded=", streams_loaded, " charge_start=", charge_started,
 		" repeat=", charge_repeated, " dash_switch=", switched_to_dash,
 		" charge_stop=", charge_stopped_on_cancel)
+	_free([p])
+	await _frames(2)
+	return ok
+
+
+## 保有フンが大きいほど移動が遅く、最大溜めまでが長い。開始サイズでは影響なし。下限・上限と無効化(0)も確認。
+func _test_size_effects() -> bool:
+	var b := Config.balance
+	var old := [b.move_speed_size_penalty, b.move_speed_size_min_ratio, b.dash_charge_size_penalty, b.dash_charge_size_max_ratio]
+	b.move_speed_size_penalty = 0.05
+	b.move_speed_size_min_ratio = 0.5
+	b.dash_charge_size_penalty = 0.05
+	b.dash_charge_size_max_ratio = 2.0
+	var start := b.size_start
+	var neutral := is_equal_approx(b.move_speed_scale(start), 1.0) and is_equal_approx(b.charge_time_scale(start), 1.0)
+	var mid := is_equal_approx(b.move_speed_scale(start + 10.0), 1.0 / 1.5) and is_equal_approx(b.charge_time_scale(start + 10.0), 1.5)
+	var clamped := is_equal_approx(b.move_speed_scale(start + 1000.0), 0.5) and is_equal_approx(b.charge_time_scale(start + 1000.0), 2.0)
+
+	# プレイヤー: 大きいと基本の溜め時間ではまだ最大にならず、延びた時間で最大になる。移動も遅い。
+	var p := _mk(0, Vector3(-15, 0, 9), Vector3(1, 0, 0))
+	p.set_physics_process(false)
+	await _frames(2)
+	p.size = start + 10.0
+	var slower := is_equal_approx(p._move_speed(), b.move_speed_base / 1.5)
+	var dt := 1.0 / 60.0
+	p._start_dash()
+	while p._charge_t < b.dash_charge_time:
+		p._process_charging(dt, true)
+	var not_full_yet := p.state == Player.State.DASH_CHARGING and p._charge_ratio() < 0.9
+	while p._charge_t < b.dash_charge_time * 1.5:
+		p._process_charging(dt, true)
+	var full_later := is_equal_approx(p._charge_ratio(), 1.0)
+	p._process_charging(dt, false)
+	var max_dash := is_equal_approx(p._dash_speed, b.dash_speed_max)
+
+	b.move_speed_size_penalty = 0.0
+	b.dash_charge_size_penalty = 0.0
+	var disabled := is_equal_approx(b.move_speed_scale(start + 50.0), 1.0) and is_equal_approx(b.charge_time_scale(start + 50.0), 1.0)
+	b.move_speed_size_penalty = old[0]
+	b.move_speed_size_min_ratio = old[1]
+	b.dash_charge_size_penalty = old[2]
+	b.dash_charge_size_max_ratio = old[3]
+	var ok := neutral and mid and clamped and slower and not_full_yet and full_later and max_dash and disabled
+	print("  [size] neutral=", neutral, " mid=", mid, " clamped=", clamped, " slower=", slower,
+		" not_full_at_base_time=", not_full_yet, " full_later=", full_later, " max_dash=", max_dash, " disabled=", disabled)
 	_free([p])
 	await _frames(2)
 	return ok

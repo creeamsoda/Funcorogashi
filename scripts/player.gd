@@ -238,6 +238,21 @@ func _current_slow() -> float:
 	return _slow_factor if _slow_t > 0.0 else 1.0
 
 
+## 通常移動の速度。保有フンが大きいほど遅く、オランウータン直撃のスロウも掛かる。
+func _move_speed() -> float:
+	return Config.balance.move_speed_base * Config.balance.move_speed_scale(size) * _current_slow()
+
+
+## 最大溜めまでの時間(秒)。保有フンが大きいほど長い。
+func _charge_full_time() -> float:
+	return Config.balance.dash_charge_time * Config.balance.charge_time_scale(size)
+
+
+## 今の溜め量(0..1)。保有フンによる溜め時間の延びを反映する。
+func _charge_ratio() -> float:
+	return Config.balance.dash_charge_ratio(_charge_t, Config.balance.charge_time_scale(size))
+
+
 func body_radius() -> float:
 	return _radius()
 
@@ -250,7 +265,7 @@ func debug_draw(overlay: DebugOverlay) -> void:
 	overlay.circle(base, _radius(), color)
 	if state == State.DASH_CHARGING:
 		# 今離した場合の直進距離(曲げなし)。減速区間は平均速度で概算。
-		var ratio := Config.balance.dash_charge_ratio(_charge_t)
+		var ratio := _charge_ratio()
 		var reach := _dash_speed_for(ratio) * (_dash_duration_for(ratio) + Config.balance.dash_end_decel_time * 0.5)
 		overlay.line(base, base + facing * reach, Color.WHITE)
 		overlay.circle(base + facing * reach, 0.3, Color.WHITE, 12)
@@ -297,19 +312,19 @@ func _process_charging(delta: float, held: bool) -> void:
 	var dir := Vector3(iv.x, 0.0, iv.y)
 	if dir.length() > 0.15:
 		facing = dir.normalized()
-		velocity = facing * Config.balance.move_speed_base * Config.balance.dash_charge_move_ratio * _current_slow()
+		velocity = facing * _move_speed() * Config.balance.dash_charge_move_ratio
 	else:
 		velocity = Vector3.ZERO
 	move_and_slide()
 	_roll_ball(delta)
 	var b := Config.balance
-	var auto_release := b.dash_charge_hold_max > 0.0 and _charge_t >= b.dash_charge_time + b.dash_charge_hold_max
+	var auto_release := b.dash_charge_hold_max > 0.0 and _charge_t >= _charge_full_time() + b.dash_charge_hold_max
 	if (not held and _charge_t >= b.dash_charge_min) or auto_release:
 		_launch_dash()
 
 
 func _launch_dash() -> void:
-	var ratio := Config.balance.dash_charge_ratio(_charge_t)
+	var ratio := _charge_ratio()
 	_stop_charge_audio()
 	state = State.DASHING
 	_dash_t = 0.0
@@ -517,7 +532,7 @@ func _process_rolling(delta: float) -> void:
 	if dir.length() > 0.15:
 		dir = dir.normalized()
 		facing = dir
-		velocity = dir * Config.balance.move_speed_base * _current_slow()
+		velocity = dir * _move_speed()
 	else:
 		velocity = Vector3.ZERO
 	move_and_slide()
@@ -776,7 +791,7 @@ func _update_dash_arrow() -> void:
 	if not _dash_arrow.visible:
 		return
 	var r := _radius()
-	var ratio := Config.balance.dash_charge_ratio(_charge_t)
+	var ratio := _charge_ratio()
 	var length := lerpf(DASH_ARROW_MIN_LENGTH, DASH_ARROW_MAX_LENGTH, ratio)
 	_dash_arrow.position = Vector3(0, -r + 0.04, 0)
 	_dash_arrow.rotation.y = atan2(facing.x, facing.z)

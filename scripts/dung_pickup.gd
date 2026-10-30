@@ -200,7 +200,7 @@ func _update_motion(delta: float) -> void:
 		_mode = TurnMode.SHARP_TURN
 	elif angle >= small:
 		_mode = TurnMode.HOLD if _since_turn < b.flee_turn_hold_time else TurnMode.MID_TURN
-	elif angle > 1.0:
+	elif angle > minf(0.5, small * 0.5): # ほぼ真っすぐなら直進扱い(小さい角度の設定がごく小さくても曲がれるように)
 		_mode = TurnMode.SMALL_TURN
 	else:
 		_mode = TurnMode.CRUISE
