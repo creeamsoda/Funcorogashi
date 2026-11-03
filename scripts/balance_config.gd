@@ -85,6 +85,7 @@ func charge_time_scale(amount: float) -> float:
 @export var dash_knockback_speed: float = 8.0      ## 相打ち時ノックバック初速
 @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
 @export var wall_crash_drops: bool = false         ## 壁激突でフンを落とすか(false = スタンのみ)
+@export_range(0.0, 90.0, 1.0) var wall_slide_max_angle: float = 15.0 ## 壁への進入角(度)がこれ以下ならスタンせず壁沿いに滑って突進継続。0で常にスタン
 
 @export_group("Dash Charge")
 @export var dash_charge_min: float = 0.15          ## 最低溜め時間(秒)。これより早く離しても溜め切ってから発動(予備動作)

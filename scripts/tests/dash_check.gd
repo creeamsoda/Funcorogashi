@@ -63,7 +63,38 @@ func _test_hit() -> bool:
 func _test_wall() -> bool:
 	var stun_only := await _wall_crash(false)
 	var drops := await _wall_crash(true)
-	return stun_only and drops
+	var slide := await _wall_slide(10.0, true)
+	var steep := await _wall_slide(30.0, false)
+	return stun_only and drops and slide and steep
+
+
+## 東壁へ進入角 angle 度で突進。wall_slide_max_angle(15度)以下なら壁沿いに滑って継続、超えればスタン。
+func _wall_slide(angle: float, expect_slide: bool) -> bool:
+	var old_angle: float = Config.balance.wall_slide_max_angle
+	Config.balance.wall_slide_max_angle = 15.0
+	var p := _mk(0, Vector3.ZERO, Vector3(1, 0, 0))
+	p.set_physics_process(false)
+	await _frames(2)
+	var x0 := 18.0 - p.body_radius() - 0.1
+	p.global_position = Vector3(x0, p.body_radius(), -4)
+	var dir := Vector3(sin(deg_to_rad(angle)), 0, cos(deg_to_rad(angle)))
+	p.facing = dir
+	p._start_dash()
+	p._process_charging(Config.balance.dash_charge_min, false)
+	var dt := 1.0 / 60.0
+	for _i in 15:
+		if p.state != Player.State.DASHING:
+			break
+		p._process_dashing(dt)
+	var slid := p.state == Player.State.DASHING and p._dash_dir.angle_to(Vector3(0, 0, 1)) < 0.01 \
+		and p.global_position.z > -4.0 + 1.0
+	var ok := slid if expect_slide else p.state == Player.State.STUNNED
+	print("  [wall_slide angle=", angle, "] state=", p.state, " dir=", p._dash_dir,
+		" pos=", p.global_position, " ok=", ok)
+	Config.balance.wall_slide_max_angle = old_angle
+	_free([p])
+	await _frames(2)
+	return ok
 
 
 func _wall_crash(drops_enabled: bool) -> bool:

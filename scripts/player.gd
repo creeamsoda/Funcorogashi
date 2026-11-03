@@ -3,7 +3,7 @@ extends CharacterBody3D
 ## プレイヤー(フンコロガシ)。フン球を転がして移動し、接触でサイズが増える。
 ## 突進: ROLLING→DASH_CHARGING(長押しで溜め)→離して DASHING→(判定)→STUNNED。
 ##   溜めるほど速く長く進み、突進中もスティックで少し曲がれる。継続時間を過ぎたら減速して止まる。
-##   壁=スタンのみ(wall_crash_drops で従来のドロップに戻せる) / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
+##   壁=スタンのみ(wall_crash_drops で従来のドロップに戻せる。進入角 wall_slide_max_angle 以下なら壁沿いに滑って継続) / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
 ##   被弾で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
 
 signal size_changed(player_id: int, size: float)
@@ -358,17 +358,43 @@ func _process_dashing(delta: float) -> void:
 		if other is Player:
 			_resolve_dash_contact(other as Player)
 		elif other is Node and (other as Node).is_in_group("wall"):
-			_play_audio(_wall_hit_audio)
-			_play_impact_vibrations([self])
-			if Config.balance.wall_crash_drops:
-				drop_and_stun(true)
-			else:
-				_enter_stun()
+			if not _try_wall_slide(col):
+				_play_audio(_wall_hit_audio)
+				_play_impact_vibrations([self])
+				if Config.balance.wall_crash_drops:
+					drop_and_stun(true)
+				else:
+					_enter_stun()
 		else:
 			_end_dash() # 想定外の障害物はそのまま停止
 	elif _dash_t >= _dash_duration + decel:
 		_end_dash()
 	_roll_ball(delta)
+
+
+## 壁への進入角(壁面と突進方向のなす角)が wall_slide_max_angle 以下なら、
+## 突進方向を壁面に沿わせて残りの移動を続け true を返す。深い角度なら false(激突)。
+func _try_wall_slide(col: KinematicCollision3D) -> bool:
+	var normal := col.get_normal()
+	normal.y = 0.0
+	if normal.length() < 0.01:
+		return false
+	normal = normal.normalized()
+	var into := -_dash_dir.dot(normal) # 壁へ向かう成分(=sin(進入角))
+	if into <= 0.0:
+		return true # 壁から離れる向きの接触は無視して継続
+	var incidence := rad_to_deg(asin(clampf(into, 0.0, 1.0)))
+	if incidence > Config.balance.wall_slide_max_angle:
+		return false
+	var along := _dash_dir - normal * _dash_dir.dot(normal)
+	if along.length() < 0.01:
+		return false
+	_dash_dir = along.normalized()
+	facing = _dash_dir
+	var rem := col.get_remainder()
+	rem.y = 0.0
+	move_and_collide(_dash_dir * rem.length())
+	return true
 
 
 ## スティック方向へ、今回の旋回上限(度/秒)まで突進方向を曲げる。
