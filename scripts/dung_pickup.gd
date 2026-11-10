@@ -11,6 +11,7 @@ extends CharacterBody3D
 ##   → 驚かずに④秒進んだら BRAKING(減速度⑤)→ 止まったら IDLE
 ## 壁・フェンスとだけ衝突し、プレイヤーやフン同士とはすり抜ける。
 ## 見た目は細長い三角形で、頂点側が進行方向。判定(壁・回収・距離)は向きに依らない円のまま。
+## flee_static_max_size 以下の小さいフンは逃げず(動かない)、見た目も球(仮。後で差し替え予定)。
 ## ノード原点は地面(y=0)。判定は半径ぶん上に置く。
 
 signal collected(size: float)
@@ -36,6 +37,7 @@ var owner_id: int = -1
 var collectible_at: float = 0.0  ## この秒(get_ticks/1000)以降 owner 本人も回収可
 
 var _mesh_instance: MeshInstance3D
+var _static_visual := false      ## 今の見た目が動かないフン用の球か
 var _shape: SphereShape3D        ## 回収判定(半径+回収余裕)
 var _body_shape: SphereShape3D   ## 壁との衝突判定
 var _collect_area: Area3D
@@ -82,7 +84,8 @@ func _physics_process(delta: float) -> void:
 	if not _placed:
 		_placed = true
 		_push_out_of_fences()
-	if _collected or not Config.balance.flee_enabled:
+	_sync_static_visual()
+	if _collected or not Config.balance.flee_enabled or is_static():
 		return
 	_update_flee(delta)
 	velocity = _heading * _speed
@@ -116,6 +119,11 @@ func _push_out_of_fences() -> void:
 	var stage := get_tree().get_first_node_in_group("stage") as Stage
 	if stage != null and stage.fence_count() > 0:
 		global_position = stage.push_out_of_fences(global_position, _radius() + 0.1)
+
+
+## 小さすぎて逃げない(動かない)フンか。
+func is_static() -> bool:
+	return size <= Config.balance.flee_static_max_size
 
 
 ## --- 逃走 ---
@@ -278,6 +286,10 @@ func _nearest_threat_distance() -> float:
 
 ## 向きに合わせて三角形を回す。驚き中は震えながら1回跳ねる。
 func _update_visual() -> void:
+	if _static_visual:
+		_mesh_instance.rotation.y = 0.0
+		_mesh_instance.position = Vector3(0, _radius(), 0)
+		return
 	_mesh_instance.rotation.y = atan2(_heading.x, _heading.z)
 	if _state != FleeState.SURPRISED:
 		_mesh_instance.position = Vector3.ZERO
@@ -294,7 +306,7 @@ func debug_draw(overlay: DebugOverlay) -> void:
 	var b := Config.balance
 	var base := Vector3(global_position.x, 0.05, global_position.z)
 	overlay.circle(base, _shape.radius, Color(1.0, 0.85, 0.2))
-	if not b.flee_enabled:
+	if not b.flee_enabled or is_static():
 		return
 	var edge := _radius()
 	if _state == FleeState.IDLE:
@@ -335,11 +347,34 @@ func _build_visual() -> void:
 
 	_mesh_instance = MeshInstance3D.new()
 	_mesh_instance.name = "Body"
-	_mesh_instance.mesh = _build_triangle_mesh(r)
+	_static_visual = is_static()
+	_mesh_instance.mesh = _build_mesh(r)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.38, 0.24, 0.14)
 	_mesh_instance.material_override = mat
 	add_child(_mesh_instance)
+
+
+## 動かないフンは球(原点を底にするため _update_visual で半径ぶん持ち上げる)、逃げるフンは三角形。
+func _build_mesh(r: float) -> Mesh:
+	if not _static_visual:
+		return _build_triangle_mesh(r)
+	var sphere := SphereMesh.new()
+	sphere.radius = r
+	sphere.height = r * 2.0
+	return sphere
+
+
+## 調整パネルでしきい値が変わった時に、見た目を球/三角形で切り替える。
+func _sync_static_visual() -> void:
+	if _static_visual == is_static():
+		return
+	_static_visual = is_static()
+	_mesh_instance.mesh = _build_mesh(_radius())
+	_state = FleeState.IDLE
+	_state_t = 0.0
+	_speed = 0.0
+	_update_visual()
 
 
 ## 上から見て細長い二等辺三角形の柱。頂点が +Z(前)。重心付近を原点にして回転が自然に見えるようにする。

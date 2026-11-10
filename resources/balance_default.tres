@@ -11,6 +11,7 @@ size_log_strength = 0.75
 size_to_scale = 0.2999999999999545
 dash_accel_time = 0.5
 drop_scatter_radius = 7.0
+flee_static_max_size = 0.6000000000000227
 flee_surprise_time = 0.25
 flee_speed = 9.0
 flee_moving_alert_radius = 0.5

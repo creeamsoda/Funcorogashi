@@ -142,6 +142,7 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 ## 「前方③以内に壁がない向き」へ逃げ(全方向ふさがりなら驚き続ける)、いなければ壁の前で止まる。
 ## 距離はプレイヤーの球の縁からフンの縁まで。スタン中のプレイヤーは無視する。
 @export var flee_enabled: bool = true              ## 地面フンがプレイヤーから逃げるか
+@export var flee_static_max_size: float = 0.3      ## このサイズ以下のフンは逃げない(動かない・見た目は球)。動物フンは0.5〜1.0、分裂ドロップは小さめ
 @export var flee_idle_alert_radius: float = 4.0    ## ⓪ 止まっている時に驚く距離(m)
 @export var flee_surprise_time: float = 0.5        ## ① 驚きモーション(その場で震えながらジャンプ)の時間(秒)
 @export var flee_speed: float = 6.5                ## ② 逃げる速度(m/s)

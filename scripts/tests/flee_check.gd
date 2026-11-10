@@ -6,6 +6,7 @@ extends Node3D
 ##  dash   : 最大溜めの突進なら開けた場所でも取れる
 ##  drop   : 被弾で落ちたフンは、攻撃側が⓪以内なら猶予なくすぐ驚く
 ##  stunned: スタン中のプレイヤーからは逃げない
+##  static : flee_static_max_size 以下の小さいフンは近づかれても動かず、見た目は球
 ## 各シナリオの所要時間を出力するので、調整時の目安にも使う。
 
 class Chaser extends Player:
@@ -41,6 +42,7 @@ func _ready() -> void:
 		"dash": await _test_dash(),
 		"drop": await _test_drop(),
 		"stunned": await _test_stunned(),
+		"static": await _test_static(),
 	}
 	var ok := true
 	for key in results:
@@ -147,6 +149,24 @@ func _test_stunned() -> bool:
 	_cleanup([c, pk])
 	await _frames(2)
 	return still
+
+
+func _test_static() -> bool:
+	var start := Vector3(0, 0, -6)
+	var pk := DungPickup.create(Config.balance.flee_static_max_size)
+	pk.position = start
+	_dung.add_child(pk)
+	var c := _chaser(0, Vector3(-3, 0, -6), pk)
+	c.chase = false
+	await get_tree().create_timer(1.0).timeout
+	var body := pk.get_node("Body") as MeshInstance3D
+	var still := pk.global_position.distance_to(start) < 0.01
+	var sphere := body.mesh is SphereMesh
+	var is_static := pk.is_static()
+	_report.append("  [static] still=%s sphere=%s" % [still, sphere])
+	_cleanup([c, pk])
+	await _frames(2)
+	return is_static and still and sphere
 
 
 func _pickup(pos: Vector3) -> DungPickup:
