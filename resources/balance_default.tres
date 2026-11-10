@@ -1,11 +1,18 @@
-[gd_resource type="Resource" script_class="BalanceConfig" format=3 uid="uid://b4ietusci5hnb"]
+[gd_resource type="Resource" script_class="BalanceConfig" format=3]
 
 [ext_resource type="Script" uid="uid://qxb43s3q3d2e" path="res://scripts/balance_config.gd" id="1_balance"]
 
 [resource]
 script = ExtResource("1_balance")
+match_duration = 120.0
 size_visual_mode = 2
 size_gain_per_pickup = 1.0
 size_log_strength = 0.75
+size_to_scale = 0.2999999999999545
+dash_accel_time = 0.5
 drop_scatter_radius = 7.0
+flee_surprise_time = 0.25
+flee_speed = 9.0
+flee_moving_alert_radius = 0.5
+flee_wall_escape_radius = 8.0
 raptor_speed = 15.0
