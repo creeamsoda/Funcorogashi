@@ -129,7 +129,8 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export_group("Dung Flee")
 ## 止まっている → ⓪以内にプレイヤー → その場で①秒驚く → 驚き終わった時の一番近いプレイヤーから離れる向きへ速度②で進む
 ## → 進行中に③以内にプレイヤー(全員)/前方③以内に壁 → また驚く → 驚かずに④秒進んだら減速度⑤で止まる
-## 壁に驚いた時は専用の驚き時間の後、離れる向きに一番近い「前方③以内に壁がない向き」へ逃げる(全方向ふさがりなら驚き続ける)。
+## 壁に驚いた時は専用の驚き時間の後、近く(flee_wall_escape_radius 以内)にプレイヤーがいれば離れる向きに一番近い
+## 「前方③以内に壁がない向き」へ逃げ(全方向ふさがりなら驚き続ける)、いなければ壁の前で止まる。
 ## 距離はプレイヤーの球の縁からフンの縁まで。スタン中のプレイヤーは無視する。
 @export var flee_enabled: bool = true              ## 地面フンがプレイヤーから逃げるか
 @export var flee_idle_alert_radius: float = 4.0    ## ⓪ 止まっている時に驚く距離(m)
@@ -138,6 +139,7 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export var flee_moving_alert_radius: float = 2.0  ## ③ 進んでいる時に驚く距離(m)。プレイヤー全員と、前方の壁に対して
 @export var flee_wall_surprise_time: float = 0.4   ## 壁に驚いた時の驚き時間(秒)。終わったら壁を避けた向きへ逃げる
 @export var flee_wall_search_step: float = 10.0    ## 壁を避ける向きを探す角度の刻み(度)。離れる向きから左右へ交互に広げる
+@export var flee_wall_escape_radius: float = 4.0   ## 壁に驚き終わった時、この距離以内にプレイヤーがいれば壁を避けて逃げ、いなければ壁の前で止まる(m)
 @export var flee_run_time: float = 1.5             ## ④ 驚かずにこの秒数進んだら減速を始める
 @export var flee_stop_decel: float = 8.0           ## ⑤ 止まる時の減速度(m/s²)
 @export var flee_speed_size_penalty: float = 0.0   ## 大きいフンほど遅く(速度 / (1 + これ×サイズ))。0 = 無効

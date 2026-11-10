@@ -3,11 +3,11 @@ extends CharacterBody3D
 ## 地面に落ちたフン。プレイヤー(のフン球)が触れると取り込まれてサイズ増加。
 ## owner_id 本人のドロップは collectible_at(スタン明けまで)回収不可。
 ## プレイヤーが近づくと驚いて逃げる(Dung Flee):
-##   IDLE(止まっている) ─⓪以内にプレイヤー→ SURPRISED(その場で①秒、震えながらジャンプ)
+##   IDLE(止まっている) ─⓪以内にプレイヤー→ SURPRISED(その場で①秒、震えながらジャンプ。その時点の逃げる向きを向き続ける)
 ##   → 驚き終わった瞬間の一番近いプレイヤーから離れる向きへ RUNNING(速度②)
 ##   → ③以内にプレイヤー(全員)か前方③以内に壁 → また SURPRISED
-##     壁に驚いた時は専用の驚き時間の後、離れる向きから左右へ広げて「前方③以内に壁がない」一番近い向きへ逃げる
-##     (全方向ふさがりなら驚き続ける)
+##     壁に驚いた時は専用の驚き時間の後、flee_wall_escape_radius 以内にプレイヤーがいれば、離れる向きから左右へ広げて
+##     「前方③以内に壁がない」一番近い向きへ逃げる(全方向ふさがりなら驚き続ける)。いなければ壁の前で止まる(IDLE)
 ##   → 驚かずに④秒進んだら BRAKING(減速度⑤)→ 止まったら IDLE
 ## 壁・フェンスとだけ衝突し、プレイヤーやフン同士とはすり抜ける。
 ## 見た目は細長い三角形で、頂点側が進行方向。判定(壁・回収・距離)は向きに依らない円のまま。
@@ -132,6 +132,8 @@ func _update_flee(delta: float) -> void:
 			_speed = 0.0
 			if _state_t >= _surprise_duration():
 				_start_running()
+			else:
+				_face_escape_direction()
 		FleeState.RUNNING, FleeState.BRAKING:
 			if _nearest_threat_distance() <= b.flee_moving_alert_radius:
 				_surprise(false)
@@ -167,10 +169,10 @@ func _surprise_duration() -> float:
 	return Config.balance.flee_wall_surprise_time if _wall_surprise else Config.balance.flee_surprise_time
 
 
-## 驚き終わった瞬間の一番近いプレイヤーから離れる向きへ、速度②で進み出す。
+## 今この瞬間に逃げるとしたらの向き。一番近いプレイヤーから離れる向き(いなければ今の向き)。
 ## プレイヤーに驚いた時は壁を避けない(壁に向かえば前方の壁でまた驚く)。
-## 壁に驚いた時は、離れる向きから左右へ広げて前方③以内に壁がない一番近い向きを選ぶ。全方向ふさがりなら驚き続ける。
-func _start_running() -> void:
+## 壁に驚いた時は、離れる向きから左右へ広げて前方③以内に壁がない一番近い向き。全方向ふさがりなら ZERO。
+func _escape_direction() -> Vector3:
 	var away := _heading
 	var nearest := _nearest_threat()
 	if nearest != null:
@@ -178,13 +180,36 @@ func _start_running() -> void:
 		d.y = 0.0
 		if d.length() > 0.001:
 			away = d.normalized()
-	if _wall_surprise:
-		var free := _find_free_direction(away)
-		if free.is_zero_approx():
-			_surprise(true) # 逃げ道なし: その場で驚き続ける(追い詰められた状態)
-			return
-		away = free
-	_heading = away
+	return _find_free_direction(away) if _wall_surprise else away
+
+
+## 驚き中は、その時点の逃げる向きへ向き続ける(プレイヤーが回り込めば向きも追う)。
+## 壁の驚きで近くにプレイヤーがいない間は、今の向き(壁の方)のまま。
+func _face_escape_direction() -> void:
+	if _wall_surprise and not _player_near_wall_escape():
+		return
+	var dir := _escape_direction()
+	if not dir.is_zero_approx():
+		_heading = dir
+
+
+## 壁に驚き終わった時に逃げるか: flee_wall_escape_radius 以内にプレイヤー(スタン中を除く)がいるか。
+func _player_near_wall_escape() -> bool:
+	return _nearest_threat_distance() <= Config.balance.flee_wall_escape_radius
+
+
+## 驚き終わった瞬間の逃げる向きへ、速度②で進み出す。逃げ道がなければ驚き続ける(追い詰められた状態)。
+## 壁の驚きで近くにプレイヤーがいなければ、逃げずに壁の前で止まる。
+func _start_running() -> void:
+	if _wall_surprise and not _player_near_wall_escape():
+		_wall_surprise = false
+		_enter_state(FleeState.IDLE)
+		return
+	var dir := _escape_direction()
+	if dir.is_zero_approx():
+		_surprise(true)
+		return
+	_heading = dir
 	_wall_surprise = false
 	_speed = Config.balance.flee_speed / (1.0 + maxf(Config.balance.flee_speed_size_penalty, 0.0) * size)
 	_enter_state(FleeState.RUNNING)

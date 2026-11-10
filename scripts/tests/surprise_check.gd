@@ -1,18 +1,19 @@
 extends Node3D
 ## 驚いて逃げるフンの headless 単体テスト。調整値はテスト内で固定して検証する:
 ##  idle    : 止まっている時は⓪以内で驚き、⓪の外では驚かない。驚き中①秒はその場から動かない
-##  basis   : 驚き中にプレイヤーが回り込んだら、驚き終わった瞬間の位置から離れる向きへ進む
+##  basis   : 驚き中にプレイヤーが回り込んだら、驚き終わった瞬間の位置から離れる向きへ進む。驚き中もその時点の逃げる向きを向く
 ##  speed   : 逃走中は速度②
 ##  moving  : 逃走中は③の外(⓪の内)では驚かず、③以内に入ると驚く(逃げ元のプレイヤーでも)
 ##  wall    : 逃走中、前方③以内に壁が来ると驚く。壁の驚きは専用の時間で、終わったら離れる向きに一番近い
-##            「前方③以内に壁がない向き」へ逃げ、続けて壁に驚かない
+##            「前方③以内に壁がない向き」へ逃げ、続けて壁に驚かない(プレイヤーが壁用の範囲内にいる時)
+##  wall_stop: 壁に驚き終わった時、壁用の範囲内にプレイヤーがいなければ壁を向いたまま止まる
 ##  enclosed: 四方を囲まれて逃げ道がなければ、壁に驚き続けてその場から動かない
 ##  brake   : 驚かずに④秒進むと減速度⑤で止まり、止まると止まっている時の範囲⓪に戻る
 
 const VALUES := {
 	"flee_enabled": true, "flee_idle_alert_radius": 4.0, "flee_surprise_time": 0.5, "flee_speed": 5.0,
 	"flee_moving_alert_radius": 2.0, "flee_run_time": 1.0, "flee_stop_decel": 10.0, "flee_speed_size_penalty": 0.0,
-	"flee_wall_surprise_time": 0.3, "flee_wall_search_step": 10.0,
+	"flee_wall_surprise_time": 0.3, "flee_wall_search_step": 10.0, "flee_wall_escape_radius": 4.0,
 }
 
 var _saved := {}
@@ -27,6 +28,7 @@ func _ready() -> void:
 	await _test_basis_and_speed()
 	await _test_moving_alert()
 	await _test_wall()
+	await _test_wall_stop()
 	await _test_enclosed()
 	await _test_brake()
 	for key in _saved:
@@ -54,11 +56,18 @@ func _test_idle() -> void:
 
 
 ## +X 側から驚かせ、驚き中に -Z 側へ回り込む → 驚き終わりには +Z へ逃げるはず。
+## 驚き中もその時点の逃げる向きを向く(最初は -X、回り込まれたら +Z)。
 func _test_basis_and_speed() -> void:
 	var pk := _pickup(Vector3.ZERO)
 	var p := _player(0, Vector3(_center_gap(pk, 3.0), 0, 0))
 	await _frames(2)
+	var faces_first := pk._state == DungPickup.FleeState.SURPRISED and pk._heading.angle_to(Vector3.LEFT) < deg_to_rad(5.0)
 	p.global_position = Vector3(0, 0, -_center_gap(pk, 1.0))
+	await _frames(2)
+	var faces_after_move := pk._state == DungPickup.FleeState.SURPRISED and pk._heading.angle_to(Vector3.BACK) < deg_to_rad(5.0)
+	print("  [face_while_surprised] first=-X:%s after_move=+Z:%s" % [faces_first, faces_after_move])
+	if not (faces_first and faces_after_move):
+		_failures.append("face_while_surprised")
 	while pk._state == DungPickup.FleeState.SURPRISED:
 		await get_tree().physics_frame
 	p.global_position = Vector3(30, 0, -30) # 以降は驚かせない
@@ -117,7 +126,9 @@ func _test_wall() -> void:
 	print("  [wall] surprised=%s gap_to_wall=%.2f (③=2.0)" % [pk._state == DungPickup.FleeState.SURPRISED, gap])
 	if not ok:
 		_failures.append("wall")
+	# 壁の驚き中にプレイヤーが近く(③の外・壁用の範囲の内)へ来る。
 	# 壁の驚きは専用の時間。終わったら壁のない向きのうち「離れる向き」に一番近い向きへ逃げ、続けて壁に驚かない
+	p.global_position = pk.global_position + Vector3(-1.0, 0, 0.6).normalized() * _center_gap(pk, 3.0)
 	var surprised_t := 0.0
 	while pk._state == DungPickup.FleeState.SURPRISED and surprised_t < 2.0:
 		await get_tree().physics_frame
@@ -139,6 +150,34 @@ func _test_wall() -> void:
 	print("  [wall_escape] surprise=%.2fs (壁用0.3) turn=%.0f度 free=%s nearest=%s keeps_running=%s" % [surprised_t, turn, free, nearest_free, no_loop])
 	if not (timing and free and nearest_free and no_loop):
 		_failures.append("wall_escape")
+	_clear([pk, p, stage])
+	await _frames(2)
+
+
+## 壁に驚き終わった時、近くにプレイヤーがいなければ逃げずに壁の前で止まる(壁を向いたまま)。
+func _test_wall_stop() -> void:
+	var stage := load("res://scenes/Stage.tscn").instantiate() as Stage
+	add_child(stage)
+	var pk := _pickup(Vector3(12, 0, 0))
+	var p := _player(0, Vector3(12.0 - _center_gap(pk, 3.0), 0, 0))
+	await _frames(2)
+	while pk._state != DungPickup.FleeState.RUNNING:
+		await get_tree().physics_frame
+	p.global_position = Vector3(-15, 0, 10) # 壁用の範囲の外
+	var t := 0.0
+	while not (pk._state == DungPickup.FleeState.SURPRISED and pk._wall_surprise) and t < 3.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	var at_wall := pk.global_position
+	while pk._state == DungPickup.FleeState.SURPRISED and t < 5.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+	await _frames(10)
+	var stopped := pk._state == DungPickup.FleeState.IDLE and pk.global_position.distance_to(at_wall) < 0.05
+	var facing_wall := pk._heading.angle_to(Vector3.RIGHT) < deg_to_rad(10.0)
+	print("  [wall_stop] idle=%s stayed=%s facing_wall=%s" % [pk._state == DungPickup.FleeState.IDLE, stopped, facing_wall])
+	if not (stopped and facing_wall):
+		_failures.append("wall_stop")
 	_clear([pk, p, stage])
 	await _frames(2)
 
