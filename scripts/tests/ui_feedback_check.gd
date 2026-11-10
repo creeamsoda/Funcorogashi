@@ -83,7 +83,7 @@ func _test_windup_blink() -> bool:
 	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 1.5
 	p._update_beetle()
 	var blink_restores := _materials_restored(materials, original_colors, original_textures) \
-		and (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.DUNG_COLOR)
+		and (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.PLAYER_COLORS[p.player_id % Player.PLAYER_COLORS.size()])
 	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 0.5
 	p._update_beetle()
 	p._end_dash()

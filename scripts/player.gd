@@ -107,6 +107,8 @@ var _scatter_rng: RandomNumberGenerator
 var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
 var _ball_mat: StandardMaterial3D
+## 所持フンの色。他のフン(茶色)と区別するためプレイヤー色にする。
+var _ball_color: Color = DUNG_COLOR
 var _ball_shape: SphereShape3D
 var _beetle: Node3D
 var _dash_arrow: Node3D
@@ -717,7 +719,8 @@ func _build_visual() -> void:
 	_ball_mi.name = "DungBall"
 	_ball_mi.mesh = _ball_mesh
 	_ball_mat = StandardMaterial3D.new()
-	_ball_mat.albedo_color = DUNG_COLOR
+	_ball_color = col
+	_ball_mat.albedo_color = _ball_color
 	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 
@@ -810,7 +813,7 @@ func _update_beetle() -> void:
 		var color := _state_tint() if state == State.STUNNED else _beetle_base_colors[i]
 		_beetle_materials[i].albedo_color = WINDUP_FLASH_COLOR if flash_on else color
 	if _ball_mat != null:
-		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else DUNG_COLOR
+		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else _ball_color
 
 
 ## 足元に平たい矢印(+Z向き)。軸は長さに合わせて伸ばし、先端は固定サイズで先に置く。
