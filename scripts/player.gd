@@ -115,6 +115,7 @@ var _dash_arrow: Node3D
 var _dash_arrow_shaft: MeshInstance3D
 var _dash_arrow_head: MeshInstance3D
 var _dash_arrow_mat: StandardMaterial3D
+var _speed_lines: DashSpeedLines
 var _beetle_model: Node3D
 var _beetle_meshes: Array[MeshInstance3D] = []
 var _beetle_materials: Array[StandardMaterial3D] = []
@@ -168,6 +169,7 @@ func _physics_process(delta: float) -> void:
 	position.y = _radius()
 	_update_beetle()
 	_update_dash_arrow()
+	_update_speed_lines()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -200,6 +202,7 @@ func stop_gameplay() -> void:
 	velocity = Vector3.ZERO
 	_kb_vel = Vector3.ZERO
 	state = State.ROLLING
+	_update_speed_lines()
 	set_process_unhandled_input(false)
 	for child in get_children():
 		if child is AudioStreamPlayer:
@@ -726,6 +729,8 @@ func _build_visual() -> void:
 
 	_build_beetle_visual(col)
 	_build_dash_arrow(col)
+	_speed_lines = DashSpeedLines.new()
+	add_child(_speed_lines)
 
 	_crown = Label3D.new()
 	_crown.name = "LeaderCrown"
@@ -848,6 +853,14 @@ func _build_dash_arrow(player_color: Color) -> void:
 	_dash_arrow_head.material_override = _dash_arrow_mat
 	_dash_arrow_head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_dash_arrow.add_child(_dash_arrow_head)
+
+
+## 突進無敵中(減速に入るまで)だけ加速線を出す。突進加速中は出さない。
+func _update_speed_lines() -> void:
+	if _speed_lines == null:
+		return
+	var active := gameplay_active and is_dash_invincible() and _dash_t < _dash_duration
+	_speed_lines.update_emitter(active, _dash_dir, global_position, _radius())
 
 
 ## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。最大溜めで金色になる。
