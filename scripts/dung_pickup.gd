@@ -2,8 +2,14 @@ class_name DungPickup
 extends CharacterBody3D
 ## 地面に落ちたフン。プレイヤー(のフン球)が触れると取り込まれてサイズ増加。
 ## owner_id 本人のドロップは collectible_at(スタン明けまで)回収不可。
-## 近づくプレイヤーから逃げる(Dung Flee)。壁・フェンスとだけ衝突し、プレイヤーやフン同士とはすり抜ける。
-## 向き(_heading)を持ち、常に前へ進む。速いほど曲がりにくく、急に曲がる時は減速して回ってから再加速する。
+## プレイヤーが近づくと驚いて逃げる(Dung Flee):
+##   IDLE(止まっている) ─⓪以内にプレイヤー→ SURPRISED(その場で①秒、震えながらジャンプ)
+##   → 驚き終わった瞬間の一番近いプレイヤーから離れる向きへ RUNNING(速度②)
+##   → ③以内にプレイヤー(全員)か前方③以内に壁 → また SURPRISED
+##     壁に驚いた時は専用の驚き時間の後、離れる向きから左右へ広げて「前方③以内に壁がない」一番近い向きへ逃げる
+##     (全方向ふさがりなら驚き続ける)
+##   → 驚かずに④秒進んだら BRAKING(減速度⑤)→ 止まったら IDLE
+## 壁・フェンスとだけ衝突し、プレイヤーやフン同士とはすり抜ける。
 ## 見た目は細長い三角形で、頂点側が進行方向。判定(壁・回収・距離)は向きに依らない円のまま。
 ## ノード原点は地面(y=0)。判定は半径ぶん上に置く。
 
@@ -13,19 +19,17 @@ signal collected(size: float)
 const DUNG_LAYER := 8
 ## 床に触れて引っかからないよう、判定球を少し浮かせる。
 const FLOOR_CLEARANCE := 0.05
-## 逃げ中の跳ねる見た目(怯え)。
-const HOP_HEIGHT := 0.18
-const HOP_FREQUENCY := 9.0
+## 驚きモーション: 驚きの時間いっぱいで1回跳ねる高さ(半径に対する倍率+固定分)と、震えの幅・速さ。
+const SURPRISE_JUMP_HEIGHT := 0.45
+const SHAKE_AMPLITUDE := 0.08
+const SHAKE_FREQUENCY := 40.0
 ## 三角形の見た目(半径に対する倍率)。
 const SHAPE_LENGTH := 2.4
 const SHAPE_WIDTH := 1.4
 const SHAPE_THICK := 0.9
-## この速さ未満を「止まっている」とみなす(止まっている時は回ってから進み出す)。
-const STOPPED_SPEED := 0.3
 
-## 曲がり方。HOLD = 中くらいの角度だが最後の回転から間もないので直進、MID_TURN = 待った後に曲がっている。
-enum TurnMode { CRUISE, SMALL_TURN, HOLD, MID_TURN, SHARP_TURN }
-const MODE_COLORS := [Color.WHITE, Color(0.2, 1.0, 0.3), Color(1.0, 0.9, 0.2), Color(0.2, 0.9, 1.0), Color(1.0, 0.3, 1.0)]
+enum FleeState { IDLE, SURPRISED, RUNNING, BRAKING }
+const STATE_COLORS := [Color.WHITE, Color(1.0, 0.9, 0.2), Color(0.2, 1.0, 0.3), Color(0.2, 0.9, 1.0)]
 
 var size: float = 0.5
 var owner_id: int = -1
@@ -40,16 +44,13 @@ var _collected := false
 var _placed := false  ## 生成位置のフェンス押し出しを済ませたか(生成側は add_child 後に位置を設定するため初回物理フレームで行う)
 
 ## 逃走状態
-var _threat_dir := Vector3.ZERO  ## 脅威から離れたい方向(重み付き合計)
-var _target_dir := Vector3.ZERO  ## 障害物回避後に選んだ、進みたい方向
+var _state := FleeState.IDLE
+var _state_t := 0.0              ## 今の状態になってからの秒数
 var _heading := Vector3.BACK     ## 向き(前方向)。_ready で無作為に回す
 var _speed := 0.0                ## 前進速度(m/s)
-var _mode := TurnMode.CRUISE
-var _since_turn := INF           ## 最後の回転(急旋回・中角度の旋回の完了)からの秒数
-var _urgency := 0.0              ## 0..1 近さ(速度倍率)
-var _rethink_t := 0.0            ## 次に方向を考え直すまで
-var _flee_time := 0.0            ## 連続逃走時間(疲労用)
-var _hop_t := 0.0
+var _wall_surprise := false      ## 今の驚きが壁によるものか(驚き時間と、驚き後の向きの決め方が変わる)
+var _wall_normal := Vector3.ZERO ## 驚いた壁の面の向き(壁から外向き)。驚き後はこの壁へ近づく向きを選ばない
+var _shake_seed := 0.0
 
 
 ## ファクトリ。GameManager.spawn_pickup() から使う。
@@ -66,8 +67,9 @@ func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_spawned_at = _now()
 	_heading = Vector3.BACK.rotated(Vector3.UP, randf() * TAU)
+	_shake_seed = randf() * 100.0
 	_build_visual()
-	_update_visual(0.0)
+	_update_visual()
 	add_to_group(DebugOverlay.GROUP)
 
 
@@ -82,18 +84,14 @@ func _physics_process(delta: float) -> void:
 		_push_out_of_fences()
 	if _collected or not Config.balance.flee_enabled:
 		return
-	_rethink_t -= delta
-	if _rethink_t <= 0.0:
-		_rethink_t = maxf(Config.balance.flee_reaction_time, 0.0)
-		_think()
-	_update_motion(delta)
+	_update_flee(delta)
 	velocity = _heading * _speed
 	if _speed > 0.0:
 		move_and_slide()
 		# 壁に押し付けられた分は前進速度から失う(壁沿いに滑る分だけ残る)
 		_speed = clampf(get_real_velocity().dot(_heading), 0.0, _speed)
 	global_position.y = 0.0
-	_update_visual(delta)
+	_update_visual()
 
 
 func _on_body_entered(body: Node) -> void:
@@ -122,132 +120,151 @@ func _push_out_of_fences() -> void:
 
 ## --- 逃走 ---
 
-## 検知半径内のプレイヤーから離れる方向と緊迫度を求め、障害物を避けて進みたい方向を選ぶ。
-func _think() -> void:
+func _update_flee(delta: float) -> void:
 	var b := Config.balance
-	var radius := maxf(b.flee_detect_radius, 0.01)
-	var panic := clampf(b.flee_panic_distance, 0.0, radius - 0.01)
-	_threat_dir = Vector3.ZERO
-	_urgency = 0.0
+	_state_t += delta
+	match _state:
+		FleeState.IDLE:
+			_speed = 0.0
+			if _nearest_threat_distance() <= b.flee_idle_alert_radius:
+				_surprise(false)
+		FleeState.SURPRISED:
+			_speed = 0.0
+			if _state_t >= _surprise_duration():
+				_start_running()
+		FleeState.RUNNING, FleeState.BRAKING:
+			if _nearest_threat_distance() <= b.flee_moving_alert_radius:
+				_surprise(false)
+				return
+			var hit := _wall_ahead(_heading)
+			if not hit.is_empty():
+				var n: Vector3 = hit["normal"]
+				n.y = 0.0
+				_wall_normal = n.normalized() if n.length() > 0.001 else -_heading
+				_surprise(true)
+				return
+			if _state == FleeState.RUNNING and _state_t >= b.flee_run_time:
+				_enter_state(FleeState.BRAKING)
+			if _state == FleeState.BRAKING:
+				_speed = move_toward(_speed, 0.0, maxf(b.flee_stop_decel, 0.0) * delta)
+				if _speed <= 0.0:
+					_enter_state(FleeState.IDLE)
+
+
+func _enter_state(next: FleeState) -> void:
+	_state = next
+	_state_t = 0.0
+
+
+## その場で止まって驚く。by_wall なら壁に驚いた扱い(専用の驚き時間、終わったら壁を避ける)。
+func _surprise(by_wall: bool) -> void:
+	_wall_surprise = by_wall
+	_speed = 0.0
+	_enter_state(FleeState.SURPRISED)
+
+
+func _surprise_duration() -> float:
+	return Config.balance.flee_wall_surprise_time if _wall_surprise else Config.balance.flee_surprise_time
+
+
+## 驚き終わった瞬間の一番近いプレイヤーから離れる向きへ、速度②で進み出す。
+## プレイヤーに驚いた時は壁を避けない(壁に向かえば前方の壁でまた驚く)。
+## 壁に驚いた時は、離れる向きから左右へ広げて前方③以内に壁がない一番近い向きを選ぶ。全方向ふさがりなら驚き続ける。
+func _start_running() -> void:
+	var away := _heading
+	var nearest := _nearest_threat()
+	if nearest != null:
+		var d := global_position - nearest.global_position
+		d.y = 0.0
+		if d.length() > 0.001:
+			away = d.normalized()
+	if _wall_surprise:
+		var free := _find_free_direction(away)
+		if free.is_zero_approx():
+			_surprise(true) # 逃げ道なし: その場で驚き続ける(追い詰められた状態)
+			return
+		away = free
+	_heading = away
+	_wall_surprise = false
+	_speed = Config.balance.flee_speed / (1.0 + maxf(Config.balance.flee_speed_size_penalty, 0.0) * size)
+	_enter_state(FleeState.RUNNING)
+
+
+## base から左右交互に flee_wall_search_step 度ずつ広げ、最初に見つかった逃げられる向き。なければ ZERO。
+## 逃げられる向き = 前方③以内に壁がなく、驚いた壁へ近づかない(壁と平行か離れる)向き。
+## 驚いた壁へ斜めに近づく向きを許すと、少し進むだけでまた③以内になり、驚きを繰り返しながら壁際を這ってしまう。
+func _find_free_direction(base: Vector3) -> Vector3:
+	var step := clampf(Config.balance.flee_wall_search_step, 1.0, 90.0)
+	var angle := 0.0
+	while angle <= 180.0:
+		for side in ([1.0] if angle == 0.0 else [1.0, -1.0]):
+			var cand := base.rotated(Vector3.UP, deg_to_rad(angle * side))
+			if cand.dot(_wall_normal) >= -0.01 and not _blocked_ahead(cand):
+				return cand
+		angle += step
+	return Vector3.ZERO
+
+
+## 向き dir の前方③以内に壁(フェンス含む)があるか。
+func _blocked_ahead(dir: Vector3) -> bool:
+	return not _wall_ahead(dir).is_empty()
+
+
+## 向き dir の前方③以内の壁との交点(intersect_ray の結果)。なければ空。
+func _wall_ahead(dir: Vector3) -> Dictionary:
+	var reach := _radius() + Config.balance.flee_moving_alert_radius
+	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
+	return get_world_3d().direct_space_state.intersect_ray(query)
+
+
+## 驚く対象のプレイヤー(人間・スタン中でない)。
+func _threats() -> Array[Player]:
+	var out: Array[Player] = []
 	for node in get_tree().get_nodes_in_group("player"):
 		var p := node as Player
-		if p == null or not p.gameplay_active or p.state == Player.State.STUNNED:
-			continue
-		var away := global_position - p.global_position
-		away.y = 0.0
-		# 球の縁同士の距離で測る(大きなフン球ほど遠くから怖がる)
-		var d := maxf(away.length() - p.body_radius() - _radius(), 0.0)
-		if d >= radius:
-			continue
-		var w := 1.0 - d / radius
-		var dir := away.normalized() if away.length() > 0.001 else Vector3.RIGHT
-		_threat_dir += dir * w * w
-		_urgency = maxf(_urgency, clampf((radius - d) / (radius - panic), 0.0, 1.0))
-	if _threat_dir.length() < 0.001:
-		_target_dir = Vector3.ZERO
-		return
-	_target_dir = _choose_direction(_threat_dir.normalized())
+		if p != null and p.gameplay_active and p.state != Player.State.STUNNED:
+			out.append(p)
+	return out
 
 
-## 周囲の候補方向を、逃げたい方向との一致と前方の空き具合で採点する。
-## どれも採点が0以下(=逃げ道なし)なら止まる。壁際・角・挟み撃ちで追い込まれる。
-func _choose_direction(desired: Vector3) -> Vector3:
-	var b := Config.balance
-	var samples := maxi(b.flee_sample_dirs, 4)
-	var look := maxf(b.flee_look_ahead, 0.1)
-	var space_state := get_world_3d().direct_space_state
-	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
-	var best := Vector3.ZERO
-	var best_score := 0.0
-	for i in samples:
-		var a := TAU * float(i) / float(samples)
-		var cand := Vector3(cos(a), 0.0, sin(a))
-		var free := look
-		var query := PhysicsRayQueryParameters3D.create(origin, origin + cand * (look + _radius()), Player.WALL_LAYER, [get_rid()])
-		var hit := space_state.intersect_ray(query)
-		if not hit.is_empty():
-			free = maxf(origin.distance_to(hit["position"]) - _radius(), 0.0)
-		var space := clampf(free / look, 0.0, 1.0)
-		var score := b.flee_weight_flee * cand.dot(desired) * space + b.flee_weight_space * space
-		if score > best_score:
-			best_score = score
-			best = cand
+## プレイヤーの球の縁からフンの縁までの距離。
+func _edge_distance(p: Player) -> float:
+	var d := global_position - p.global_position
+	d.y = 0.0
+	return maxf(d.length() - p.body_radius() - _radius(), 0.0)
+
+
+func _nearest_threat() -> Player:
+	var best: Player = null
+	var best_d := INF
+	for p in _threats():
+		var d := _edge_distance(p)
+		if d < best_d:
+			best_d = d
+			best = p
 	return best
 
 
-## 進みたい方向とのなす角で曲がり方を決め、向きと前進速度を更新する。
-##   小さい角度 : 減速最小限で曲がる(SMALL_TURN)
-##   中くらい   : 最後の回転から flee_turn_hold_time 経つまで直進(HOLD)、経ったら曲がる(MID_TURN)
-##   大きい角度 : 減速しながら回り、向きが合ったら再加速(SHARP_TURN)。止まっている時も回ってから進む
-func _update_motion(delta: float) -> void:
-	var b := Config.balance
-	_since_turn += delta
-	if _target_dir.is_zero_approx():
-		_mode = TurnMode.CRUISE
-		_flee_time = 0.0
-		_speed = move_toward(_speed, 0.0, maxf(b.flee_accel, 0.0) * delta)
-		return
-	_flee_time += delta
-	var angle := rad_to_deg(_heading.angle_to(_target_dir))
-	var small := clampf(b.flee_small_turn_angle, 0.0, 180.0)
-	var sharp := clampf(b.flee_sharp_turn_angle, small, 180.0)
-	if _mode == TurnMode.SHARP_TURN or _mode == TurnMode.MID_TURN:
-		# 向きが合うまで続ける(閾値付近で状態が行ったり来たりしないように)
-		if angle < small:
-			_mode = TurnMode.CRUISE
-			_since_turn = 0.0
-	elif angle >= sharp or (angle >= small and _speed < STOPPED_SPEED):
-		_mode = TurnMode.SHARP_TURN
-	elif angle >= small:
-		_mode = TurnMode.HOLD if _since_turn < b.flee_turn_hold_time else TurnMode.MID_TURN
-	elif angle > minf(0.5, small * 0.5): # ほぼ真っすぐなら直進扱い(小さい角度の設定がごく小さくても曲がれるように)
-		_mode = TurnMode.SMALL_TURN
-	else:
-		_mode = TurnMode.CRUISE
-	var target_speed := _target_speed()
-	match _mode:
-		TurnMode.SHARP_TURN:
-			_rotate_toward(_target_dir, delta)
-			target_speed = minf(target_speed, maxf(b.flee_sharp_turn_min_speed, 0.0))
-		TurnMode.SMALL_TURN, TurnMode.MID_TURN:
-			_rotate_toward(_target_dir, delta)
-			target_speed *= clampf(b.flee_small_turn_speed_ratio, 0.0, 1.0)
-	var rate := b.flee_accel if target_speed > _speed else b.flee_brake_decel
-	_speed = move_toward(_speed, target_speed, maxf(rate, 0.0) * delta)
+func _nearest_threat_distance() -> float:
+	var p := _nearest_threat()
+	return _edge_distance(p) if p != null else INF
 
 
-## 前進速度が速いほど遅い旋回速度で、目標の向きへ回す。
-func _rotate_toward(dir: Vector3, delta: float) -> void:
-	var angle := _heading.signed_angle_to(dir, Vector3.UP)
-	var max_step := deg_to_rad(turn_rate()) * delta
-	_heading = _heading.rotated(Vector3.UP, clampf(angle, -max_step, max_step)).normalized()
-
-
-## 今の前進速度での旋回速度(度/秒)。
-func turn_rate() -> float:
-	var b := Config.balance
-	var t := clampf(_speed / maxf(b.flee_speed, 0.01), 0.0, 1.0)
-	return lerpf(b.flee_turn_rate_stopped, b.flee_turn_rate_at_speed, t)
-
-
-## 近さに応じた逃げる速さ(サイズ・疲労を反映)。
-func _target_speed() -> float:
-	var b := Config.balance
-	var target := b.flee_speed * _urgency / (1.0 + maxf(b.flee_speed_size_penalty, 0.0) * size)
-	if b.flee_stamina > 0.0 and _flee_time >= b.flee_stamina:
-		target *= b.flee_tired_speed_ratio
-	return target
-
-
-## 向きに合わせて三角形を回し、逃げている間は小さく跳ねて「怯え」を見せる。
-func _update_visual(delta: float) -> void:
+## 向きに合わせて三角形を回す。驚き中は震えながら1回跳ねる。
+func _update_visual() -> void:
 	_mesh_instance.rotation.y = atan2(_heading.x, _heading.z)
-	_hop_t = _hop_t + delta if _speed > 0.2 else 0.0
-	_mesh_instance.position.y = absf(sin(_hop_t * HOP_FREQUENCY)) * HOP_HEIGHT * _urgency
+	if _state != FleeState.SURPRISED:
+		_mesh_instance.position = Vector3.ZERO
+		return
+	var t := clampf(_state_t / maxf(_surprise_duration(), 0.01), 0.0, 1.0)
+	var jump := sin(t * PI) * (SURPRISE_JUMP_HEIGHT + _radius() * 0.3)
+	var phase := (_state_t + _shake_seed) * SHAKE_FREQUENCY
+	_mesh_instance.position = Vector3(sin(phase) * SHAKE_AMPLITUDE, jump, cos(phase * 1.3) * SHAKE_AMPLITUDE)
 
 
-## F2 デバッグ表示: 回収範囲(黄)・逃走検知半径(薄赤)・全速になる距離(赤)・進みたい方向(赤線)・
-## 今の向き(曲がり方の色: 白=直進 緑=小さく曲がる 黄=待って直進 水色=待った後に曲がる 紫=急旋回)。
+## F2 デバッグ表示: 回収範囲(黄)・止まっている時の驚き範囲⓪(赤)・進行中の驚き範囲③(赤、前方は線)・
+## 向き(状態の色: 白=停止 黄=驚き中 緑=逃走中 水色=減速中)。
 func debug_draw(overlay: DebugOverlay) -> void:
 	var b := Config.balance
 	var base := Vector3(global_position.x, 0.05, global_position.z)
@@ -255,11 +272,12 @@ func debug_draw(overlay: DebugOverlay) -> void:
 	if not b.flee_enabled:
 		return
 	var edge := _radius()
-	overlay.circle(base, edge + b.flee_detect_radius, Color(1.0, 0.4, 0.4, 0.5), 40)
-	overlay.circle(base, edge + b.flee_panic_distance, Color(1.0, 0.2, 0.2), 32)
-	if not _target_dir.is_zero_approx():
-		overlay.line(base, base + _target_dir * 2.0, Color(1.0, 0.2, 0.2))
-	overlay.line(base, base + _heading * (1.0 + _speed * 0.3), MODE_COLORS[_mode])
+	if _state == FleeState.IDLE:
+		overlay.circle(base, edge + b.flee_idle_alert_radius, Color(1.0, 0.3, 0.3), 40)
+	elif _state != FleeState.SURPRISED:
+		overlay.circle(base, edge + b.flee_moving_alert_radius, Color(1.0, 0.3, 0.3), 32)
+		overlay.line(base, base + _heading * (edge + b.flee_moving_alert_radius), Color(1.0, 0.3, 0.3))
+	overlay.line(base, base + _heading * (edge + 1.0), STATE_COLORS[_state])
 
 
 ## --- 見た目・判定 ---
