@@ -61,6 +61,8 @@ func radius_for_size(amount: float, scale: float) -> float:
 @export_range(0.05, 1.0, 0.01) var move_speed_size_min_ratio: float = 0.5 ## 減速の下限(基本速度に対する倍率)
 @export var dash_charge_size_penalty: float = 0.03 ## 溜め時間の延び度合い。最大溜めまでの時間 = 基本 × (1 + これ × 増加分)。0 = 無効
 @export var dash_charge_size_max_ratio: float = 2.0 ## 溜め時間の延びの上限(基本に対する倍率)
+@export var dash_accel_size_slope: float = 0.03    ## 突進加速時間の縮み方(傾き)。加速時間 = 基本 / (1 + これ × 増加分)。大きいほど急に短くなる。0 = 無効
+@export_range(0.0, 1.0, 0.01) var dash_accel_size_min_ratio: float = 0.3 ## 突進加速時間の縮みの下限(基本に対する倍率)
 
 
 ## 開始サイズからの増加分。
@@ -79,12 +81,19 @@ func charge_time_scale(amount: float) -> float:
 	var scale := 1.0 + maxf(dash_charge_size_penalty, 0.0) * size_growth(amount)
 	return minf(scale, maxf(dash_charge_size_max_ratio, 1.0))
 
+
+## 保有サイズによる「突進加速時間」の倍率(1 = 縮みなし)。フンが大きいほど短くなる。
+func accel_time_scale(amount: float) -> float:
+	var scale := 1.0 / (1.0 + maxf(dash_accel_size_slope, 0.0) * size_growth(amount))
+	return maxf(scale, clampf(dash_accel_size_min_ratio, 0.0, 1.0))
+
 @export_group("Dash")
 @export var dash_cooldown: float = 1.5             ## クールタイム(秒)。突進開始(ボタンを離した時)から数える
 @export var stun_duration: float = 1.0             ## スタン時間(秒)
 @export var dash_knockback_speed: float = 8.0      ## 相打ち時ノックバック初速
 @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
 @export var wall_crash_drops: bool = false         ## 壁激突でフンを落とすか(false = スタンのみ)
+@export var dash_accel_time: float = 0.15          ## 突進加速の基本時間(秒)。離してからこの間は無敵でなく、相手をドロップさせられず、相手の突進無敵でこちらだけドロップ。保有フンが大きいほど短くなる
 @export_range(0.0, 90.0, 1.0) var wall_slide_max_angle: float = 15.0 ## 壁への進入角(度)がこれ以下ならスタンせず壁沿いに滑って突進継続。0で常にスタン
 
 @export_group("Dash Charge")

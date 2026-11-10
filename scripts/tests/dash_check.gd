@@ -1,6 +1,7 @@
 extends Node3D
 ## 突進判定の headless 自動テスト(操作不要):
 ##  命中(相手ドロップ・自分無傷)/ 壁激突(既定はスタンのみ)/ 相打ち(両者ドロップ)/ 溜め / 曲げ
+##  突進加速(ドロップさせない・相手の突進無敵でこちらだけドロップ・壁でスタン)/ 突進無敵の壁(スタン)/ 点滅
 ## プレイヤーの facing を設定して _start_dash() を直接呼び、結果を検証する。
 ## 入力なし(待機デバイス)なので、_start_dash() 後は最低溜めで自動的に発動する。
 
@@ -8,6 +9,8 @@ var _dung: Node3D
 
 func _ready() -> void:
 	add_child(load("res://scenes/Stage.tscn").instantiate()) # 壁(group "wall")
+	# 配置距離は突進加速0.15秒を前提にしているため、調整値(balance_default)に依存しないよう固定する。
+	Config.balance.dash_accel_time = 0.15
 	_dung = Node3D.new()
 	_dung.add_to_group("dung_container")
 	add_child(_dung)
@@ -21,19 +24,21 @@ func _ready() -> void:
 	var r_charge := await _test_charge()
 	var r_steer := await _test_steer()
 	var r_size := await _test_size_effects()
+	var r_phases := await _test_dash_phases()
 
 	var ok := r_hit and r_wall and r_mutual and r_loss and r_vibration_routing and r_audio \
-		and r_charge and r_steer and r_size
+		and r_charge and r_steer and r_size and r_phases
 	print("[dash_check] result=", ("PASS" if ok else "FAIL"),
 		"  hit=", r_hit, " wall=", r_wall, " mutual=", r_mutual,
 		" drop_loss=", r_loss, " vibration_routing=", r_vibration_routing,
-		" audio=", r_audio, " charge=", r_charge, " steer=", r_steer, " size=", r_size)
+		" audio=", r_audio, " charge=", r_charge, " steer=", r_steer, " size=", r_size,
+		" phases=", r_phases)
 	get_tree().quit(0 if ok else 1)
 
 
 func _test_hit() -> bool:
 	var atk := _mk(0, Vector3(0, 0, 0), Vector3(1, 0, 0))
-	var vic := _mk(1, Vector3(3, 0, 0), Vector3(-1, 0, 0))
+	var vic := _mk(1, Vector3(4, 0, 0), Vector3(-1, 0, 0)) # 突進加速を抜けてから当たる距離
 	await _frames(2)
 	var vic0: float = vic.size
 	var atk0: float = atk.size
@@ -59,13 +64,30 @@ func _test_hit() -> bool:
 	return ok
 
 
-## 壁激突は既定でスタンのみ(サイズ不変・ドロップなし)。wall_crash_drops=true で従来どおり落とす。
+## 突進加速中の壁激突は既定でスタンのみ(サイズ不変・ドロップなし)。wall_crash_drops=true で従来どおり落とす。
+## 突進無敵中の壁激突も同じくスタンする(サイズ不変)。
 func _test_wall() -> bool:
 	var stun_only := await _wall_crash(false)
 	var drops := await _wall_crash(true)
 	var slide := await _wall_slide(10.0, true)
 	var steep := await _wall_slide(30.0, false)
-	return stun_only and drops and slide and steep
+	var invincible := await _wall_invincible()
+	return stun_only and drops and slide and steep and invincible
+
+
+func _wall_invincible() -> bool:
+	var p := _mk(0, Vector3(14, 0, 0), Vector3(1, 0, 0))
+	await _frames(2)
+	var s0: float = p.size
+	p.facing = Vector3(1, 0, 0)
+	p._start_dash()
+	await _seconds(0.9)
+	var ok: bool = p.state == Player.State.STUNNED and is_equal_approx(p.size, s0) \
+		and p.global_position.x > 16.0
+	print("  [wall invincible] state=", p.state, " size ", s0, "->", p.size, " x=", p.global_position.x)
+	_free([p])
+	await _frames(2)
+	return ok
 
 
 ## 東壁へ進入角 angle 度で突進。wall_slide_max_angle(15度)以下なら壁沿いに滑って継続、超えればスタン。
@@ -100,7 +122,7 @@ func _wall_slide(angle: float, expect_slide: bool) -> bool:
 func _wall_crash(drops_enabled: bool) -> bool:
 	var old_flag: bool = Config.balance.wall_crash_drops
 	Config.balance.wall_crash_drops = drops_enabled
-	var p := _mk(0, Vector3(14, 0, 0), Vector3(1, 0, 0))
+	var p := _mk(0, Vector3(16.5, 0, 0), Vector3(1, 0, 0)) # 突進加速中に壁へ届く距離
 	await _frames(2)
 	var s0: float = p.size
 	var dc0: int = _dung.get_child_count()
@@ -221,8 +243,8 @@ func _test_steer() -> bool:
 
 
 func _test_mutual() -> bool:
-	var a := _mk(0, Vector3(-2, 0, 0), Vector3(1, 0, 0))
-	var b := _mk(1, Vector3(2, 0, 0), Vector3(-1, 0, 0))
+	var a := _mk(0, Vector3(-3, 0, 0), Vector3(1, 0, 0))
+	var b := _mk(1, Vector3(3, 0, 0), Vector3(-1, 0, 0))
 	await _frames(2)
 	var a0: float = a.size
 	var b0: float = b.size
@@ -387,12 +409,133 @@ func _test_size_effects() -> bool:
 	return ok
 
 
+## 突進加速中、すぐ前(z方向に z_offset ずらした位置)の静止相手へぶつける。物理は手動で1/60秒ずつ進める。
+func _accel_contact(z_offset: float) -> Dictionary:
+	var atk := _mk(0, Vector3(0, 0, -6), Vector3(1, 0, 0))
+	var vic := _mk(1, Vector3(atk.body_radius() * 2.0 + 0.1, 0, -6 + z_offset), Vector3(1, 0, 0))
+	atk.set_physics_process(false)
+	vic.set_physics_process(false)
+	await _frames(2)
+	var got := {"hits": 0}
+	atk.dash_hit.connect(func(_a: int, _v: int) -> void: got["hits"] += 1)
+	var vic0: float = vic.size
+	atk.facing = Vector3(1, 0, 0)
+	atk._start_dash()
+	atk._process_charging(Config.balance.dash_charge_min, false)
+	var touch_dist := atk.body_radius() + vic.body_radius() + 0.05
+	var touched_in_accel := false
+	var dt := 1.0 / 60.0
+	for _i in 120:
+		if atk.state != Player.State.DASHING:
+			break
+		atk._process_dashing(dt)
+		if atk.is_dash_accelerating() and atk.global_position.distance_to(vic.global_position) < touch_dist:
+			touched_in_accel = true
+	var result := {
+		"touched_in_accel": touched_in_accel,
+		"hits": got["hits"],
+		"vic_dropped": vic.size < vic0,
+		"passed": atk.global_position.x > vic.global_position.x + 0.5,
+		"atk_stunned": atk.state == Player.State.STUNNED,
+	}
+	_free([atk, vic])
+	await _frames(2)
+	return result
+
+
+## 突進加速/突進無敵の切替、接触ルール、保有サイズによる加速時間の縮み、点滅。
+func _test_dash_phases() -> bool:
+	var b := Config.balance
+	# 加速中に突進無敵でない相手へぶつかる: ドロップさせず突進を続ける。
+	#  かすめた場合は相手に沿って抜けていき、相手は無傷。
+	var graze: Dictionary = await _accel_contact(0.45)
+	var graze_ok: bool = graze["touched_in_accel"] and graze["hits"] == 0 and not graze["vic_dropped"] \
+		and graze["passed"] and not graze["atk_stunned"]
+	#  正面の場合は押し付けたまま突進を続け、突進無敵になった時点で命中する。
+	var head_on: Dictionary = await _accel_contact(0.0)
+	var head_on_ok: bool = head_on["touched_in_accel"] and head_on["hits"] == 1 and head_on["vic_dropped"] \
+		and not head_on["atk_stunned"]
+	var accel_no_drop := graze_ok and head_on_ok
+	print("  [accel_contact] graze=", graze, " head_on=", head_on)
+
+	# 加速中 × 相手の突進無敵: こちらだけドロップ(どちらから当たっても同じ)
+	var results := []
+	for accel_is_mover in [true, false]:
+		var a := _mk(0, Vector3(-8, 0, 6), Vector3(1, 0, 0))
+		var inv := _mk(1, Vector3(8, 0, 6), Vector3(-1, 0, 0))
+		await _frames(2)
+		a.set_physics_process(false)
+		inv.set_physics_process(false)
+		for pl in [a, inv]:
+			pl.state = Player.State.DASHING
+			pl._dash_accel_time = 0.2
+		a._dash_t = 0.0
+		inv._dash_t = 0.5
+		var a0: float = a.size
+		var i0: float = inv.size
+		var accel_phase := a.is_dash_accelerating() and not a.is_dash_invincible() and inv.is_dash_invincible()
+		if accel_is_mover:
+			a._resolve_dash_contact(inv)
+		else:
+			inv._resolve_dash_contact(a)
+		results.append(accel_phase and a.size < a0 and is_equal_approx(inv.size, i0) \
+			and a.state == Player.State.STUNNED and inv.state != Player.State.STUNNED)
+		_free([a, inv])
+		await _frames(2)
+	var accel_vs_inv: bool = results[0] and results[1]
+
+	# 保有フンが大きいほど加速時間が短くなる(下限あり、傾き0で無効)
+	var old := [b.dash_accel_size_slope, b.dash_accel_size_min_ratio]
+	b.dash_accel_size_slope = 0.05
+	b.dash_accel_size_min_ratio = 0.3
+	var start := b.size_start
+	var scale_ok := is_equal_approx(b.accel_time_scale(start), 1.0) \
+		and is_equal_approx(b.accel_time_scale(start + 10.0), 1.0 / 1.5) \
+		and is_equal_approx(b.accel_time_scale(start + 1000.0), 0.3)
+	var p := _mk(0, Vector3(-15, 0, -9), Vector3(1, 0, 0))
+	p.set_physics_process(false)
+	await _frames(2)
+	p.size = start + 10.0
+	p._start_dash()
+	p._process_charging(b.dash_charge_min, false)
+	var big_accel := is_equal_approx(p._dash_accel_time, b.dash_accel_time / 1.5)
+	b.dash_accel_size_slope = 0.0
+	var disabled := is_equal_approx(b.accel_time_scale(start + 50.0), 1.0)
+	b.dash_accel_size_slope = old[0]
+	b.dash_accel_size_min_ratio = old[1]
+
+	# 点滅: 溜め=ゆっくり / 加速=なし / 無敵=素早く
+	p._end_dash()
+	p._start_dash()
+	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 0.5
+	var charge_on := p._flash_on()
+	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 1.5
+	var charge_off := not p._flash_on()
+	p.state = Player.State.DASHING
+	p._dash_accel_time = 0.2
+	p._dash_t = 0.1
+	var accel_none := not p._flash_on()
+	p._dash_t = 0.2 + Player.INVINCIBLE_FLASH_INTERVAL * 0.5
+	var inv_on := p._flash_on()
+	p._dash_t = 0.2 + Player.INVINCIBLE_FLASH_INTERVAL * 1.5
+	var inv_off := not p._flash_on()
+	var flash_ok := charge_on and charge_off and accel_none and inv_on and inv_off \
+		and Player.INVINCIBLE_FLASH_INTERVAL < Player.CHARGE_FLASH_INTERVAL
+	_free([p])
+	await _frames(2)
+
+	var ok := accel_no_drop and accel_vs_inv and scale_ok and big_accel and disabled and flash_ok
+	print("  [phases] accel_no_drop=", accel_no_drop, " accel_vs_inv=", results,
+		" scale=", scale_ok, " big_accel=", big_accel, " disabled=", disabled, " flash=", flash_ok)
+	return ok
+
+
 func _mk(pid: int, pos: Vector3, face: Vector3) -> Player:
 	var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 	p.player_id = pid
 	p.input_device = 9999 # 待機(自動入力なし)
+	p.position = pos # 原点で追加してから動かすと、重なった相手を「動く床」として拾って位置が飛ぶため先に置く
 	add_child(p)
-	p.global_position = pos
 	p.facing = face
 	return p
 

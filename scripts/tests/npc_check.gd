@@ -7,6 +7,8 @@ var _dung: Node3D
 
 func _ready() -> void:
 	add_child(load("res://scenes/Stage.tscn").instantiate())
+	# 配置距離は突進加速0.15秒を前提にしているため、調整値(balance_default)に依存しないよう固定する。
+	Config.balance.dash_accel_time = 0.15
 	_dung = Node3D.new()
 	_dung.add_to_group("dung_container")
 	add_child(_dung)
@@ -142,7 +144,7 @@ func _test_three_hits() -> void:
 				Config.balance.stun_duration) + 0.1).timeout
 		_expect(human._cd_t <= 0.0 and npc.state == Player.State.ROLLING,
 			"cooldown and NPC stun finish before next dash")
-		var gap := human.body_radius() + npc.body_radius() + 1.2
+		var gap := human.body_radius() + npc.body_radius() + 2.5 # 突進加速を抜けてから当たる距離
 		human.position = Vector3(npc.position.x - gap, human.body_radius(), npc.position.z)
 		human.facing = Vector3.RIGHT
 		for _i in 2:

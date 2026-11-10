@@ -70,7 +70,7 @@ func _test_windup_blink() -> bool:
 			(other_shell.get_active_material(0) as StandardMaterial3D).albedo_color)
 
 	p._start_dash()
-	p._charge_t = Player.WINDUP_FLASH_INTERVAL * 0.5
+	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 0.5
 	p._update_beetle()
 	var ball_flashes := (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.WINDUP_FLASH_COLOR)
 	var beetle_flashes := not materials.is_empty()
@@ -80,11 +80,11 @@ func _test_windup_blink() -> bool:
 	for i in other_materials.size():
 		other_unchanged = other_unchanged and other_materials[i].albedo_color.is_equal_approx(other_colors[i])
 
-	p._charge_t = Player.WINDUP_FLASH_INTERVAL * 1.5
+	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 1.5
 	p._update_beetle()
 	var blink_restores := _materials_restored(materials, original_colors, original_textures) \
 		and (ball.material_override as StandardMaterial3D).albedo_color.is_equal_approx(Player.DUNG_COLOR)
-	p._charge_t = Player.WINDUP_FLASH_INTERVAL * 0.5
+	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 0.5
 	p._update_beetle()
 	p._end_dash()
 	p._update_beetle()

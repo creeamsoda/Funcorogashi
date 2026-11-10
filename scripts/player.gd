@@ -3,7 +3,10 @@ extends CharacterBody3D
 ## プレイヤー(フンコロガシ)。フン球を転がして移動し、接触でサイズが増える。
 ## 突進: ROLLING→DASH_CHARGING(長押しで溜め)→離して DASHING→(判定)→STUNNED。
 ##   溜めるほど速く長く進み、突進中もスティックで少し曲がれる。継続時間を過ぎたら減速して止まる。
-##   壁=スタンのみ(wall_crash_drops で従来のドロップに戻せる。進入角 wall_slide_max_angle 以下なら壁沿いに滑って継続) / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
+##   DASHING は離してから加速時間(dash_accel_time × 保有サイズ倍率。フンが大きいほど短い)までが「突進加速」、以降止まるまでが「突進無敵」。
+##   壁=どちらのフェーズでもスタン(wall_crash_drops でドロップも。進入角 wall_slide_max_angle 以下なら壁沿いに滑って継続)。
+##   突進加速: 相手=ドロップさせず突進を続ける(相手に沿って進む) / 相手が突進無敵ならこちらだけドロップ。
+##   突進無敵: 相手が突進無敵なら相打ち(両者ノックバック+両者ドロップ) / それ以外の相手=命中。
 ##   被弾で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
 
 signal size_changed(player_id: int, size: float)
@@ -18,7 +21,9 @@ enum State { ROLLING, DASH_CHARGING, DASHING, STUNNED }
 
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
-const WINDUP_FLASH_INTERVAL := 0.08
+## 溜め中はゆっくり、突進無敵中は素早く点滅する。突進加速中は点滅しない。
+const CHARGE_FLASH_INTERVAL := 0.25
+const INVINCIBLE_FLASH_INTERVAL := 0.05
 ## 溜め中の方向矢印(見た目のみ)。長さは溜め量で補間する。
 const DASH_ARROW_MIN_LENGTH := 1.0
 const DASH_ARROW_MAX_LENGTH := 3.5
@@ -88,6 +93,7 @@ var _dash_t := 0.0
 var _dash_speed := 0.0      ## 今回の突進速度(発動時の溜め量で決定)
 var _dash_duration := 0.0   ## 今回の突進継続時間(減速を除く)
 var _dash_turn_rate := 0.0  ## 今回の突進中の旋回上限(度/秒)
+var _dash_accel_time := 0.0 ## 今回の突進加速時間(発動時の保有サイズで決定)。これを過ぎると突進無敵
 var _stun_t := 0.0
 var _cd_t := 0.0            ## 突進クールタイム残り
 var _kb_vel := Vector3.ZERO ## ノックバック速度(相打ち時)
@@ -248,6 +254,21 @@ func _charge_full_time() -> float:
 	return Config.balance.dash_charge_time * Config.balance.charge_time_scale(size)
 
 
+## 突進加速の時間(秒)。保有フンが大きいほど長い。
+func _accel_time() -> float:
+	return maxf(Config.balance.dash_accel_time, 0.0) * Config.balance.accel_time_scale(size)
+
+
+## 突進加速中(離してから加速時間まで)。壁でスタンし、相手をドロップさせられない。
+func is_dash_accelerating() -> bool:
+	return state == State.DASHING and _dash_t < _dash_accel_time
+
+
+## 突進無敵中(加速時間後〜止まるまで)。相手をドロップさせ、互いに無敵なら相打ち。
+func is_dash_invincible() -> bool:
+	return state == State.DASHING and _dash_t >= _dash_accel_time
+
+
 ## 今の溜め量(0..1)。保有フンによる溜め時間の延びを反映する。
 func _charge_ratio() -> float:
 	return Config.balance.dash_charge_ratio(_charge_t, Config.balance.charge_time_scale(size))
@@ -332,6 +353,7 @@ func _launch_dash() -> void:
 	_dash_speed = _dash_speed_for(ratio)
 	_dash_duration = _dash_duration_for(ratio)
 	_dash_turn_rate = lerpf(Config.balance.dash_turn_rate, Config.balance.dash_turn_rate_at_max, ratio)
+	_dash_accel_time = _accel_time()
 	_cd_t = Config.balance.dash_cooldown
 	_play_audio(_dash_audio)
 
@@ -356,7 +378,7 @@ func _process_dashing(delta: float) -> void:
 	if col != null:
 		var other := col.get_collider()
 		if other is Player:
-			_resolve_dash_contact(other as Player)
+			_resolve_dash_contact(other as Player, col)
 		elif other is Node and (other as Node).is_in_group("wall"):
 			if not _try_wall_slide(col):
 				_play_audio(_wall_hit_audio)
@@ -367,7 +389,8 @@ func _process_dashing(delta: float) -> void:
 					_enter_stun()
 		else:
 			_end_dash() # 想定外の障害物はそのまま停止
-	elif _dash_t >= _dash_duration + decel:
+	# 相手に押し付けたまま突進を続けている場合も、時間切れで止める。
+	if state == State.DASHING and _dash_t >= _dash_duration + decel:
 		_end_dash()
 	_roll_ball(delta)
 
@@ -409,20 +432,35 @@ func _steer_dash(delta: float) -> void:
 	facing = _dash_dir
 
 
-func _resolve_dash_contact(victim: Player) -> void:
+func _resolve_dash_contact(victim: Player, col: KinematicCollision3D = null) -> void:
 	if not gameplay_active or not victim.gameplay_active or victim.is_queued_for_deletion():
 		return
-	if victim.state == State.DASHING:
-		# 相打ち: 両者ノックバック+両者ドロップ
+	var away := global_position - victim.global_position
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.01 else -_dash_dir
+	if victim.is_dash_invincible():
 		_play_audio(_hit_audio)
-		var away := global_position - victim.global_position
-		away.y = 0.0
-		away = away.normalized() if away.length() > 0.01 else -_dash_dir
-		_apply_knockback(away)
-		victim._apply_knockback(-away)
-		_play_impact_vibrations([self, victim])
-		drop_and_stun()
-		victim.drop_and_stun()
+		if is_dash_invincible():
+			# 相打ち: 両者ノックバック+両者ドロップ
+			_apply_knockback(away)
+			victim._apply_knockback(-away)
+			_play_impact_vibrations([self, victim])
+			drop_and_stun()
+			victim.drop_and_stun()
+		else:
+			# 突進加速中に相手の突進無敵へぶつかった: こちらだけドロップ
+			_apply_knockback(away)
+			_play_impact_vibrations([self])
+			drop_and_stun()
+			dash_hit.emit(victim.player_id, player_id)
+	elif not is_dash_invincible():
+		# 突進加速中(または突進外)の接触: ドロップさせず突進を続ける。
+		# 残りの移動は相手の表面に沿わせる(正面なら押し付けたまま、突進無敵になった時点で命中)。
+		if col != null:
+			var rem := col.get_remainder().slide(col.get_normal())
+			rem.y = 0.0
+			if rem.length() > 0.0001:
+				move_and_collide(rem)
 	else:
 		# 命中: 相手だけドロップ+スタン、自分は無傷
 		_play_audio(_hit_audio)
@@ -767,7 +805,7 @@ func _update_beetle() -> void:
 		direction = Vector3.FORWARD
 	_beetle.position = -direction * (r + _beetle_rear_extent + BEETLE_BALL_GAP) + Vector3(0, -r, 0)
 	_beetle.rotation.y = atan2(direction.x, direction.z)
-	var flash_on := _windup_flash_on()
+	var flash_on := _flash_on()
 	for i in _beetle_materials.size():
 		var color := _state_tint() if state == State.STUNNED else _beetle_base_colors[i]
 		_beetle_materials[i].albedo_color = WINDUP_FLASH_COLOR if flash_on else color
@@ -839,10 +877,13 @@ func _state_tint() -> Color:
 			return PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
 
 
-func _windup_flash_on() -> bool:
-	if state != State.DASH_CHARGING:
-		return false
-	return int(_charge_t / WINDUP_FLASH_INTERVAL) % 2 == 0
+## 溜め中=ゆっくり点滅 / 突進加速中=点滅なし / 突進無敵中=素早く点滅。
+func _flash_on() -> bool:
+	if state == State.DASH_CHARGING:
+		return int(_charge_t / CHARGE_FLASH_INTERVAL) % 2 == 0
+	if is_dash_invincible():
+		return int((_dash_t - _dash_accel_time) / INVINCIBLE_FLASH_INTERVAL) % 2 == 0
+	return false
 
 
 func _roll_ball(delta: float) -> void:
