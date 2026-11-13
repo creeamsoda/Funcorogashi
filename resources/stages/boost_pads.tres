@@ -19,6 +19,6 @@ wind_dir = Vector2(0, 1)
 script = ExtResource("1_layout")
 layout_id = "boost_pads"
 display_name = "加速板+杭"
-pillars = Array[Vector2]([Vector2(0, 0), Vector2(4.0, -4.0), Vector2(6.0, 4.0), Vector2(-6.0, -4.0), Vector2(-4.0, 4.0)])
+pillars = Array[Vector2]([Vector2(0, 0), Vector2(12.625, -4.0), Vector2(6.0, 4.0), Vector2(-6.0, -4.0), Vector2(-12.625, 4.0)])
 pillar_size = 0.6
 boost_pads = Array[ExtResource("2_pad")]([SubResource("pad_0"), SubResource("pad_1")])
