@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="StageLayout" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/stage_layout.gd" id="1_layout"]
+[ext_resource type="Script" path="res://scripts/boost_pad_spec.gd" id="2_pad"]
+
+[sub_resource type="Resource" id="pad_0"]
+script = ExtResource("2_pad")
+center = Vector2(6.0, -5.0)
+size = Vector2(2.5, 6.0)
+wind_dir = Vector2(0, -1)
+
+[sub_resource type="Resource" id="pad_1"]
+script = ExtResource("2_pad")
+center = Vector2(-6.0, 5.0)
+size = Vector2(2.5, 6.0)
+wind_dir = Vector2(0, 1)
+
+[resource]
+script = ExtResource("1_layout")
+layout_id = "boost_pads"
+display_name = "加速板+杭"
+pillars = Array[Vector2]([Vector2(0, 0), Vector2(4.0, -4.0), Vector2(6.0, 4.0), Vector2(-6.0, -4.0), Vector2(-4.0, 4.0)])
+pillar_size = 0.6
+boost_pads = Array[ExtResource("2_pad")]([SubResource("pad_0"), SubResource("pad_1")])

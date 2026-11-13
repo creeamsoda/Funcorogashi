@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="StageLayout" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/stage_layout.gd" id="1_layout"]
+
+[resource]
+script = ExtResource("1_layout")
+layout_id = "pedestal"
+display_name = "中央の台座"
+pedestal_enabled = true
+pedestal_top_radius = 3.5
+pedestal_base_radius = 4.5
+pedestal_ramp_width = 2.5

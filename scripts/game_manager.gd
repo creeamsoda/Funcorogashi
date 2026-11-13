@@ -97,6 +97,9 @@ func _spawn_players() -> void:
 	var n: int = 1 if mode == "solo" else InputRouter.versus_player_count(clampi(Config.balance.player_count, 1, 4))
 	var srcs := InputRouter.sources(n)
 	var spots: Array = SPAWN_SPOTS_2P if n == 2 else SPAWN_SPOTS
+	var stage := get_tree().get_first_node_in_group("stage") as Stage
+	if n != 2 and stage != null and stage.layout != null and stage.layout.spawn_spots.size() >= n:
+		spots = stage.layout.spawn_spots
 	for i in n:
 		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 		p.player_id = i

@@ -20,6 +20,8 @@ signal collected(size: float)
 const DUNG_LAYER := 8
 ## 床に触れて引っかからないよう、判定球を少し浮かせる。
 const FLOOR_CLEARANCE := 0.05
+## 前方の崖(下りられない段差)を探す間隔(m)。
+const CLIFF_PROBE_STEP := 0.25
 ## 驚きモーション: 驚きの時間いっぱいで1回跳ねる高さ(半径に対する倍率+固定分)と、震えの幅・速さ。
 const SURPRISE_JUMP_HEIGHT := 0.45
 const SHAKE_AMPLITUDE := 0.08
@@ -90,10 +92,14 @@ func _physics_process(delta: float) -> void:
 	_update_flee(delta)
 	velocity = _heading * _speed
 	if _speed > 0.0:
+		var before := global_position
 		move_and_slide()
 		# 壁に押し付けられた分は前進速度から失う(壁沿いに滑る分だけ残る)
 		_speed = clampf(get_real_velocity().dot(_heading), 0.0, _speed)
-	global_position.y = 0.0
+		if Stage.has_elevation():
+			_follow_ground(before)
+	if not Stage.has_elevation():
+		global_position.y = 0.0
 	_update_visual()
 
 
@@ -114,11 +120,37 @@ func _on_body_entered(body: Node) -> void:
 	queue_free()
 
 
-## 動物やドロップがフェンスに重なる位置へ落ちた場合、フェンスの外へ出す。
+## 動物やドロップがフェンスに重なる位置・円形外壁の外へ落ちた場合、内側へ出す。
+## 高低差のあるステージでは真上から見た地面(台の上・スロープ)に置く。
 func _push_out_of_fences() -> void:
 	var stage := get_tree().get_first_node_in_group("stage") as Stage
-	if stage != null and stage.fence_count() > 0:
+	if stage != null and stage.needs_push_out():
 		global_position = stage.push_out_of_fences(global_position, _radius() + 0.1)
+	if Stage.has_elevation():
+		global_position = Stage.settle_on_ground(global_position)
+
+
+## 移動後の地面に合わせて高さを変える。足元が段差(step_height)を超えて低い・急斜面なら移動を取り消して壁扱いで驚く
+## (自分から段差を飛び降りない。スロープのようになだらかな下りや小さい段差は下りられる)。
+func _follow_ground(before: Vector3) -> void:
+	var y := _ground_height_at(global_position, before.y)
+	if is_nan(y):
+		global_position = before
+		_speed = 0.0
+		if _state == FleeState.RUNNING or _state == FleeState.BRAKING:
+			_wall_normal = -_heading
+			_surprise(true)
+		return
+	global_position.y = y
+
+
+## 基準の高さ ref_y から段差の範囲(上下 step_height)で見つかる床の高さ。なければ NAN。
+func _ground_height_at(pos: Vector3, ref_y: float) -> float:
+	var step: float = Config.balance.step_height
+	var g := Stage.probe_ground(pos, ref_y + _radius() + step, _radius() + step * 2.0 + 0.05)
+	if g.is_empty() or (g["normal"] as Vector3).y < Stage.FLOOR_MIN_NORMAL_Y:
+		return NAN
+	return g["y"]
 
 
 ## 小さすぎて逃げない(動かない)フンか。
@@ -244,11 +276,29 @@ func _blocked_ahead(dir: Vector3) -> bool:
 
 
 ## 向き dir の前方③以内の壁との交点(intersect_ray の結果)。なければ空。
+## 高低差のあるステージでは、下りられない段差(崖)も壁とみなす(normal は崖から手前向き)。
 func _wall_ahead(dir: Vector3) -> Dictionary:
 	var reach := _radius() + Config.balance.flee_moving_alert_radius
 	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
-	return get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty() or not Stage.has_elevation():
+		return hit
+	return _cliff_ahead(dir, reach)
+
+
+## 向き dir の前方 reach 以内で、足元から段差を超えて下がる(または急斜面になる)最初の地点。なければ空。
+func _cliff_ahead(dir: Vector3, reach: float) -> Dictionary:
+	var y := global_position.y
+	var dist := 0.0
+	while dist < reach:
+		dist = minf(dist + CLIFF_PROBE_STEP, reach)
+		var p := global_position + dir * dist
+		var gy := _ground_height_at(p, y)
+		if is_nan(gy):
+			return {"position": Vector3(p.x, y, p.z), "normal": -dir}
+		y = gy
+	return {}
 
 
 ## 驚く対象のプレイヤー(人間・スタン中でない)。

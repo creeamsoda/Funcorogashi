@@ -7,7 +7,7 @@ extends Node3D
 ##  no_pass : 逃げるフンはフェンスをすり抜けない
 ##  game    : 試合で BalanceConfig の選択が反映される(対戦=stage_layout、一人=solo_stage_layout)
 
-const EXPECTED_COUNTS := [0, 4, 8, 2]
+const EXPECTED_COUNTS := [0, 4, 8, 2, 8, 0, 0]
 const MIN_SPAWN_CLEARANCE := 1.5
 
 class Chaser extends Player:
@@ -43,7 +43,14 @@ func _test_layouts_and_spawns() -> void:
 			if not f.is_in_group("wall"):
 				_failures.append("fence_not_wall[%d]" % i)
 		var nearest := INF
-		for spot in spots:
+		var layout_spots: Array = spots.duplicate()
+		if not stage.layout.spawn_spots.is_empty(): # レイアウト側で4人の初期位置を上書きしている
+			layout_spots = Array(stage.layout.spawn_spots) + GameManager.SPAWN_SPOTS_2P
+			layout_spots.append(spots[-1])
+		if not stage.layout.pillars.is_empty():
+			# 中央に杭があるステージ(加速板+杭)は対戦専用。一人プレイの開始位置(中央)は対象外
+			layout_spots.pop_back()
+		for spot in layout_spots:
 			nearest = minf(nearest, stage.distance_to_fences(spot))
 		if nearest < MIN_SPAWN_CLEARANCE:
 			_failures.append("spawn_clearance[%d]=%.2f" % [i, nearest])

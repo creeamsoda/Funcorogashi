@@ -10,10 +10,10 @@ extends Resource
 @export var player_count: int = 4                  ## 同時プレイ人数
 
 @export_group("Stage Layout")
-## 対戦のフェンス配置(Stage.LAYOUT_PATHS の順)。試合開始時に反映(パネルで変えたらリトライ)。
-@export_enum("Open", "Center", "Corners", "Lanes") var stage_layout: int = 1
+## 対戦のステージ(外壁の形+フェンス配置。Stage.LAYOUT_PATHS の順)。試合開始時に反映(パネルで変えたらリトライ)。
+@export_enum("Open", "Center", "Corners", "Lanes", "CircleCross", "Pedestal", "BoostPads") var stage_layout: int = 6
 ## 一人プレイのフェンス配置。固定コースがフェンス前提でないため当面 Open。
-@export_enum("Open", "Center", "Corners", "Lanes") var solo_stage_layout: int = 0
+@export_enum("Open", "Center", "Corners", "Lanes", "CircleCross", "Pedestal", "BoostPads") var solo_stage_layout: int = 0
 
 @export_group("Solo NPC")
 @export var solo_npc_speed: float = 3.0            ## 横断の経路進行速度(m/s)
@@ -54,6 +54,9 @@ func radius_for_size(amount: float, scale: float) -> float:
 
 @export_group("Movement")
 @export var move_speed_base: float = 6.0           ## 基本移動速度(m/s)
+@export var step_height: float = 0.35              ## 高低差のあるステージで乗り越え/下りられる段差の高さ(m)。フンもこれより大きい段差は下りない
+@export var boost_pad_charge_ratio: float = 1.0   ## 加速板で発動する突進の溜め量(0〜1。速度・持続時間を決める)
+@export var fall_gravity: float = 30.0             ## 高低差のあるステージで落下するときの重力(m/s²)
 
 @export_group("Size Effects")
 ## 保有フンが大きいほど遅く・溜めが長くなる。どちらも開始サイズからの増加分(内部サイズ=スコア)で決まる。

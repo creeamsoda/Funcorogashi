@@ -38,4 +38,4 @@ func _process(delta: float) -> void:
 		queue_free()
 
 func _inside() -> bool:
-	return absf(position.x) < HX - 0.2 and absf(position.z) < HZ - 0.2
+	return Stage.is_inside_arena(position, 0.2)
