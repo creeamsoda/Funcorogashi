@@ -130,7 +130,7 @@ func _log_assignment(p: Player) -> void:
 		label = "keyboard-arrows"
 	elif p.input_device == -2:
 		label = "keyboard-WASD"
-	elif p.input_device >= 0 and p.input_device < 9000:
+	elif InputRouter.is_joypad(p.input_device):
 		label = "joypad%d (%s)" % [p.input_device, Input.get_joy_name(p.input_device)]
 	print("[input] P", p.player_id + 1, " (", label, ")")
 

@@ -195,7 +195,7 @@ func _test_dash_input_suppression() -> void:
 
 func _set_dash_key(pressed: bool) -> void:
 	var event := InputEventKey.new()
-	event.keycode = Player.ARROWS_DASH_KEY
+	event.keycode = PlayerInput.ARROWS_DASH_KEY
 	event.pressed = pressed
 	Input.parse_input_event(event)
 	Input.flush_buffered_events()

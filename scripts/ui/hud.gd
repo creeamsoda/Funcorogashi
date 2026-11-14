@@ -50,7 +50,7 @@ func setup(player_count: int) -> void:
 	var corners := [Vector2(24, 18), Vector2(1070, 18), Vector2(24, 672), Vector2(1070, 672)]
 	for i in player_count:
 		var l := _make_label(24)
-		l.add_theme_color_override("font_color", Player.PLAYER_COLORS[i % Player.PLAYER_COLORS.size()])
+		l.add_theme_color_override("font_color", Player.color_for(i))
 		l.position = corners[i % corners.size()]
 		add_child(l)
 		_size_labels.append(l)

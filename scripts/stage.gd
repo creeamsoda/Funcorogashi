@@ -30,12 +30,9 @@ const LAYOUT_PATHS := [
 ## 加速板の色(板・風)。
 const BOOST_PAD_COLOR := Color(1.0, 0.55, 0.1)
 const BOOST_WIND_COLOR := Color(0.95, 0.30, 0.0)  ## 板より濃いオレンジ(板の上でも見えるように)
-## 台座の分割数(円周・スロープ)と色。
-const PEDESTAL_SEGMENTS := 48
+## 台座の色。
 const PEDESTAL_TOP_COLOR := Color(0.97, 0.97, 0.97)   ## 天面・スロープ上面
 const PEDESTAL_SIDE_COLOR := Color(0.32, 0.32, 0.35)  ## 台座側面・スロープ側面
-## 天面の張り出し(スロープ上端→天面の接続)が元の円へ戻るまでの角度。
-const PEDESTAL_LOBE_DEG := 150.0
 ## これより上向きの面を「床」とみなす(法線のy成分。cos45°)。台座側面(急斜面)は床にならない。
 const FLOOR_MIN_NORMAL_Y := 0.7
 ## 円形外壁の分割数(箱を並べて円にする)。
@@ -210,6 +207,22 @@ func needs_push_out() -> bool:
 	return fence_count() > 0 or pillar_count() > 0 or is_circle()
 
 
+## 壁・床などの静的な判定(Player.WALL_LAYER)を parent の下に作る。
+func _static_body(parent: Node, groups: Array) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.collision_layer = Player.WALL_LAYER
+	body.collision_mask = 0
+	for g in groups:
+		body.add_to_group(g)
+	parent.add_child(body)
+	return body
+
+
+## 突進で激突する "wall" グループの静的な判定。
+func _wall_body(parent: Node, extra_groups: Array[String] = []) -> StaticBody3D:
+	return _static_body(parent, ["wall"] + extra_groups)
+
+
 func _build_fences() -> void:
 	if layout == null:
 		return
@@ -219,12 +232,7 @@ func _build_fences() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = FENCE_COLOR
 	for spec in layout.fences:
-		var body := StaticBody3D.new()
-		body.collision_layer = Player.WALL_LAYER
-		body.collision_mask = 0
-		body.add_to_group("wall") # 突進の激突判定は外周の壁と同じ(スタン)
-		body.add_to_group("fence")
-		fences.add_child(body)
+		var body := _wall_body(fences, ["fence"]) # 突進の激突判定は外周の壁と同じ(スタン)
 		body.position = Vector3(spec.center.x, 0.0, spec.center.y)
 		body.rotation.y = -deg_to_rad(spec.rotation_deg)
 		var mesh := BoxMesh.new()
@@ -262,12 +270,7 @@ func _build_pillars() -> void:
 	var shape := BoxShape3D.new()
 	shape.size = sz
 	for c in layout.pillars:
-		var body := StaticBody3D.new()
-		body.collision_layer = Player.WALL_LAYER
-		body.collision_mask = 0
-		body.add_to_group("wall")
-		body.add_to_group("pillar")
-		root.add_child(body)
+		var body := _wall_body(root, ["pillar"])
 		body.position = Vector3(c.x, WALL_HEIGHT * 0.5, c.y)
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
@@ -284,12 +287,8 @@ func _build_pillars() -> void:
 
 
 func _build_floor() -> void:
-	var body := StaticBody3D.new()
-	body.collision_layer = Player.WALL_LAYER
-	body.collision_mask = 0
+	var body := _static_body(self, ["floor"])
 	body.name = "Floor"
-	body.add_to_group("floor")
-	add_child(body)
 	var mi := MeshInstance3D.new()
 	var shape: Shape3D
 	if is_circle():
@@ -335,11 +334,7 @@ func _build_walls() -> void:
 	walls.name = "Walls"
 	add_child(walls)
 	for s in specs:
-		var body := StaticBody3D.new()
-		body.collision_layer = Player.WALL_LAYER
-		body.collision_mask = 0
-		body.add_to_group("wall")
-		walls.add_child(body)
+		var body := _wall_body(walls)
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3(s[2], WALL_HEIGHT, s[3])
 		var mi := MeshInstance3D.new()
@@ -381,132 +376,26 @@ func _build_boost_pads() -> void:
 			Vector3(spec.size.x * 0.5, 0.6, spec.size.y * 0.5), BOOST_WIND_COLOR)
 
 
-## 中央の台座: 円錐台(天面=壁の高さ)と、その周りを半周して天面へつながるスロープ。
-## 天面はスロープ上端の先へ張り出した卵形(楕円ぎみ)にし、スロープ上端がそのまま天面へ続くようにする。
-## 見た目と判定は同じ三角形から作る(判定は1つの ConcavePolygonShape3D)。"wall" グループなので突進で激突できる。
-## 斜面(スロープ上面・天面)は床として登れ、急な側面とスロープの外側面は壁になる。
+## 中央の台座(形は PedestalMesh)。見た目と判定は同じ三角形から作る(判定は1つの ConcavePolygonShape3D)。
+## "wall" グループなので突進で激突できる。斜面(スロープ上面・天面)は床として登れ、急な側面とスロープの外側面は壁になる。
 ## 色は 上面(天面・スロープ上面)=白、側面(台座側面・スロープ側面)=濃いグレー。
 func _build_pedestal() -> void:
 	if layout == null or not layout.pedestal_enabled:
 		return
-	var h := WALL_HEIGHT
 	var rt := layout.pedestal_top_radius
 	var rb := maxf(layout.pedestal_base_radius, rt)
-	var w := layout.pedestal_ramp_width
-	var n := PEDESTAL_SEGMENTS
-	var top_faces := PackedVector3Array()
-	var top_normals := PackedVector3Array()
-	var side_faces := PackedVector3Array()
-	var side_normals := PackedVector3Array()
-	# 円錐台: スロープ上端(奥)から、スロープの続く向きへ一周する。上端では断面がスロープ上端と同じ
-	# (天面が rt+w まで張り出し、外側は垂直な壁)で、PEDESTAL_LOBE_DEG かけて元の円錐台へ戻る。
-	var end_a := _ramp_angle(1.0)
-	var top_c := Vector3(0, h, 0)
-	for i in n:
-		var s0 := _lobe(float(i) / float(n))
-		var s1 := _lobe(float(i + 1) / float(n))
-		var a0 := end_a - TAU * float(i) / float(n)
-		var a1 := end_a - TAU * float(i + 1) / float(n)
-		var u0 := Vector3(cos(a0), 0, sin(a0))
-		var u1 := Vector3(cos(a1), 0, sin(a1))
-		var b0 := u0 * lerpf(rb, rt + w, s0)
-		var b1 := u1 * lerpf(rb, rt + w, s1)
-		var t0 := u0 * lerpf(rt, rt + w, s0) + Vector3.UP * h
-		var t1 := u1 * lerpf(rt, rt + w, s1) + Vector3.UP * h
-		_add_quad(side_faces, side_normals, b0, b1, t1, t0, (u0 + u1).normalized() + Vector3.UP * 0.3)
-		_add_tri(top_faces, top_normals, top_c, t0, t1, Vector3.UP)
-	# スロープ: 手前(+z, 角度90°)から右(+x, 0°)を回って奥(-z, -90°)へ。t=0 で地面、t=1 で天面の高さ。
-	var steps := PEDESTAL_SEGMENTS
-	for j in steps:
-		var p0 := _ramp_points(float(j) / float(steps), rt, rb, w, h)
-		var p1 := _ramp_points(float(j + 1) / float(steps), rt, rb, w, h)
-		_add_quad(top_faces, top_normals, p0["inner"], p0["outer"], p1["outer"], p1["inner"], Vector3.UP)
-		_add_quad(side_faces, side_normals, p0["outer"], p0["ground"], p1["ground"], p1["outer"],
-			(p0["u"] + p1["u"]).normalized())
-
-	var body := StaticBody3D.new()
+	var shape_data := PedestalMesh.build(rt, rb, layout.pedestal_ramp_width, WALL_HEIGHT)
+	var body := _wall_body(self, ["pedestal"])
 	body.name = "Pedestal"
-	body.collision_layer = Player.WALL_LAYER
-	body.collision_mask = 0
-	body.add_to_group("wall")
-	body.add_to_group("pedestal")
-	add_child(body)
-	var mesh := ArrayMesh.new()
-	_add_surface(mesh, top_faces, top_normals, PEDESTAL_TOP_COLOR)
-	_add_surface(mesh, side_faces, side_normals, PEDESTAL_SIDE_COLOR)
 	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
+	mi.mesh = shape_data.to_array_mesh(PEDESTAL_TOP_COLOR, PEDESTAL_SIDE_COLOR)
 	body.add_child(mi)
-	var all_faces := top_faces.duplicate()
-	all_faces.append_array(side_faces)
 	var shape := ConcavePolygonShape3D.new()
 	shape.backface_collision = true
-	shape.set_faces(all_faces)
+	shape.set_faces(shape_data.all_faces())
 	var col := CollisionShape3D.new()
 	col.shape = shape
 	body.add_child(col)
-
-
-## スロープ上の t(0〜1) の角度(xz 平面の atan2(z, x))。手前 90° から奥 -90° へ。
-func _ramp_angle(t: float) -> float:
-	return PI * 0.5 - PI * t
-
-
-## 天面の張り出し量(0〜1)。f はスロープ上端から続く向きへ回った割合(0〜1で一周)。
-## 上端(f=0)で 1、PEDESTAL_LOBE_DEG 回ったところで 0 へなめらかに戻る。
-func _lobe(f: float) -> float:
-	var deg := f * 360.0
-	if deg >= PEDESTAL_LOBE_DEG:
-		return 0.0
-	return 0.5 * (1.0 + cos(PI * deg / PEDESTAL_LOBE_DEG))
-
-
-## スロープ上の t(0〜1) の断面: 内側上端・外側上端・外側の地面・外向き単位ベクトル。
-## 内側は円錐台の側面に沿う(高さ t*h での側面の半径)。
-func _ramp_points(t: float, rt: float, rb: float, w: float, h: float) -> Dictionary:
-	var a := _ramp_angle(t)
-	var u := Vector3(cos(a), 0, sin(a))
-	var y := h * t
-	var ri := lerpf(rb, rt, t)
-	return {
-		"u": u,
-		"inner": u * ri + Vector3.UP * y,
-		"outer": u * (ri + w) + Vector3.UP * y,
-		"ground": u * (ri + w),
-	}
-
-
-## 四角形 a-b-c-d を三角形2枚で追加する。法線は outward_hint の側を向ける(面の巻き順に依らない)。
-func _add_quad(faces: PackedVector3Array, normals: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, d: Vector3, outward_hint: Vector3) -> void:
-	_add_tri(faces, normals, a, b, c, outward_hint)
-	_add_tri(faces, normals, a, c, d, outward_hint)
-
-
-func _add_tri(faces: PackedVector3Array, normals: PackedVector3Array, a: Vector3, b: Vector3, c: Vector3, outward_hint: Vector3) -> void:
-	var nrm := (b - a).cross(c - a)
-	if nrm.length_squared() < 1e-10:
-		return # 面積0(スロープ下端の高さ0の側面など)
-	nrm = nrm.normalized()
-	if nrm.dot(outward_hint) < 0.0:
-		var tmp := b
-		b = c
-		c = tmp
-		nrm = -nrm
-	# Godot は時計回りが表。表が外を向くよう a,c,b の順に積む。
-	faces.append_array([a, c, b])
-	normals.append_array([nrm, nrm, nrm])
-
-
-func _add_surface(mesh: ArrayMesh, faces: PackedVector3Array, normals: PackedVector3Array, color: Color) -> void:
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = faces
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
 
 
 ## 円形外壁: 箱を円周に並べる。内面が arena_radius に接するよう配置し、継ぎ目が空かないよう少し長くする。
@@ -523,11 +412,7 @@ func _build_circle_walls() -> void:
 	shape.size = size
 	for i in CIRCLE_WALL_SEGMENTS:
 		var a := TAU * float(i) / float(CIRCLE_WALL_SEGMENTS)
-		var body := StaticBody3D.new()
-		body.collision_layer = Player.WALL_LAYER
-		body.collision_mask = 0
-		body.add_to_group("wall")
-		walls.add_child(body)
+		var body := _wall_body(walls)
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
 		body.add_child(mi)

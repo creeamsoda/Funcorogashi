@@ -153,7 +153,7 @@ func _on_body_entered(body: Node) -> void:
 	var p := body as Player
 	if not p.gameplay_active or not p.can_collect or p.is_queued_for_deletion():
 		return
-	if owner_id == p.player_id and _now() < collectible_at:
+	if _locked_for(p):
 		return # 自分のドロップはスタン明けまで回収不可
 	# 動物由来(ownerなし)は実量に獲得倍率を掛ける。プレイヤーが落としたフンは実量を保持する。
 	var gain: float = size * Config.balance.size_gain_per_pickup if owner_id < 0 else size
@@ -179,15 +179,22 @@ func _push_out_of_fences() -> void:
 ## 移動後の地面に合わせて高さを変える。足元が段差(step_height)を超えて低い・急斜面なら移動を取り消して壁扱いで驚く
 ## (自分から段差を飛び降りない。スロープのようになだらかな下りや小さい段差は下りられる)。
 func _follow_ground(before: Vector3) -> void:
+	if _settle_after_move(before):
+		return
+	_speed = 0.0
+	if _state == FleeState.RUNNING or _state == FleeState.BRAKING:
+		_wall_normal = -_heading
+		_surprise(true)
+
+
+## 移動後の地面の高さに合わせる。下りられない段差・急斜面なら移動前の位置に戻して false。
+func _settle_after_move(before: Vector3) -> bool:
 	var y := _ground_height_at(global_position, before.y)
 	if is_nan(y):
 		global_position = before
-		_speed = 0.0
-		if _state == FleeState.RUNNING or _state == FleeState.BRAKING:
-			_wall_normal = -_heading
-			_surprise(true)
-		return
+		return false
 	global_position.y = y
+	return true
 
 
 ## 基準の高さ ref_y から段差の範囲(上下 step_height)で見つかる床の高さ。なければ NAN。
@@ -218,7 +225,7 @@ func _blackhole_puller() -> Player:
 		var p := node as Player
 		if p == null or not p.gameplay_active or not p.is_blackhole_active():
 			continue
-		if owner_id == p.player_id and _now() < collectible_at:
+		if _locked_for(p):
 			continue
 		var d := _edge_distance(p)
 		if d <= Config.balance.blackhole_radius and d < best_d:
@@ -242,11 +249,7 @@ func _move_pulled(p: Player) -> void:
 	var before := global_position
 	move_and_slide()
 	if Stage.has_elevation():
-		var y := _ground_height_at(global_position, before.y)
-		if is_nan(y):
-			global_position = before # 段差は下りない
-		else:
-			global_position.y = y
+		_settle_after_move(before) # 段差は下りない
 	else:
 		global_position.y = 0.0
 
@@ -415,12 +418,10 @@ func _smart_escape_direction() -> Vector3:
 
 ## 向き dir へ壁(フェンス含む)まで何 m 開けているか(最大 reach)。
 func _open_distance(dir: Vector3, reach: float) -> float:
-	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := _wall_ray(dir, reach)
 	if hit.is_empty():
 		return reach
-	return origin.distance_to(hit["position"])
+	return _ray_origin().distance_to(hit["position"])
 
 
 ## 向き dir の前方③以内に壁(フェンス含む)があるか。
@@ -432,12 +433,21 @@ func _blocked_ahead(dir: Vector3) -> bool:
 ## 高低差のあるステージでは、下りられない段差(崖)も壁とみなす(normal は崖から手前向き)。
 func _wall_ahead(dir: Vector3) -> Dictionary:
 	var reach := _radius() + Config.balance.flee_moving_alert_radius
-	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := _wall_ray(dir, reach)
 	if not hit.is_empty() or not Stage.has_elevation():
 		return hit
 	return _cliff_ahead(dir, reach)
+
+
+## 判定球の中心の高さから向き dir へ reach だけ、壁(フェンス含む)へのレイを飛ばす。
+func _wall_ray(dir: Vector3, reach: float) -> Dictionary:
+	var origin := _ray_origin()
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
+	return get_world_3d().direct_space_state.intersect_ray(query)
+
+
+func _ray_origin() -> Vector3:
+	return global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
 
 
 ## 向き dir の前方 reach 以内で、足元から段差を超えて下がる(または急斜面になる)最初の地点。なければ空。
@@ -603,6 +613,11 @@ func _build_triangle_mesh(r: float) -> ArrayMesh:
 			st.add_vertex(v)
 	st.generate_normals()
 	return st.commit()
+
+
+## 本人のドロップで、まだ回収できない(スタン明け前)か。
+func _locked_for(p: Player) -> bool:
+	return owner_id == p.player_id and _now() < collectible_at
 
 
 func _now() -> float:

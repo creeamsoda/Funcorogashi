@@ -61,31 +61,11 @@ func _build_preview() -> void:
 	ball.position.y = radius
 	presentation.add_child(ball)
 
-	var beetle := Node3D.new()
-	beetle.name = "Beetle"
-	presentation.add_child(beetle)
-	var model := Player.BEETLE_SCENE.instantiate() as Node3D
-	model.name = "Model"
-	model.rotation.x = deg_to_rad(-Player.BEETLE_SIZE_REFERENCE_DEGREES)
-	beetle.add_child(model)
-	var meshes: Array[MeshInstance3D] = []
-	for node in model.find_children("*", "MeshInstance3D", true, false):
-		var part := node as MeshInstance3D
-		meshes.append(part)
-		for surface in part.mesh.get_surface_count():
-			var source := part.get_active_material(surface) as StandardMaterial3D
-			if source.resource_name == "Wing_Image":
-				var wing_material := source.duplicate() as StandardMaterial3D
-				wing_material.albedo_color = Player.PLAYER_COLORS[player_id % Player.PLAYER_COLORS.size()]
-				part.set_surface_override_material(surface, wing_material)
-	var bounds := _mesh_bounds(meshes, beetle)
-	model.scale = Vector3.ONE * Player.BEETLE_REFERENCE_LENGTH * Player.BEETLE_VISUAL_SIZE_RATIO / bounds.size.z
-	model.rotation.x = deg_to_rad(-Player.BEETLE_HEAD_DOWN_DEGREES)
-	bounds = _mesh_bounds(meshes, beetle)
-	model.position.y = -bounds.position.y + 0.005
-	beetle.position.z = -(radius + bounds.end.z + Player.BEETLE_BALL_GAP)
+	# 結果画面では点滅しないので、羽のマテリアルだけを個体ごとに複製する。
+	var beetle := BeetleModel.create(presentation, Player.color_for(player_id), false)
+	beetle.root.position.z = -beetle.distance_from_ball(radius)
 
-	var combined_bounds := _mesh_bounds(meshes, presentation).merge(ball.transform * ball.get_aabb())
+	var combined_bounds := BeetleModel.mesh_bounds(beetle.meshes, presentation).merge(ball.transform * ball.get_aabb())
 	var camera := Camera3D.new()
 	camera.name = "BackCamera"
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -131,21 +111,3 @@ func _build_lighting(presentation: Node3D) -> void:
 	fill_light.light_color = Color(0.74, 0.83, 1.0)
 	fill_light.light_energy = 0.55
 	presentation.add_child(fill_light)
-
-
-## 本編と同様に実頂点で測り、傾けたモデルの足先とフン球の間隔を合わせる。
-func _mesh_bounds(meshes: Array[MeshInstance3D], space: Node3D) -> AABB:
-	var bounds := AABB()
-	var has_point := false
-	for part in meshes:
-		var to_space := space.global_transform.affine_inverse() * part.global_transform
-		for surface in part.mesh.get_surface_count():
-			var vertices: PackedVector3Array = part.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
-			for vertex in vertices:
-				var point := to_space * vertex
-				if not has_point:
-					bounds = AABB(point, Vector3.ZERO)
-					has_point = true
-				else:
-					bounds = bounds.expand(point)
-	return bounds
