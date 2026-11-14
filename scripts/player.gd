@@ -755,9 +755,8 @@ func _build_visual() -> void:
 	_ball_mi = MeshInstance3D.new()
 	_ball_mi.name = "DungBall"
 	_ball_mi.mesh = _ball_mesh
-	_ball_mat = StandardMaterial3D.new()
 	_ball_color = col
-	_ball_mat.albedo_color = _ball_color
+	_ball_mat = ToonMaterial.create(_ball_color)
 	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 

@@ -55,8 +55,7 @@ func _build_preview() -> void:
 	sphere.radius = radius
 	sphere.height = radius * 2.0
 	ball.mesh = sphere
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Player.DUNG_COLOR
+	var material := ToonMaterial.create(Player.DUNG_COLOR)
 	ball.material_override = material
 	ball.position.y = radius
 	presentation.add_child(ball)

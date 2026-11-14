@@ -32,8 +32,7 @@ func _ready() -> void:
 	m.radius = 0.3
 	m.height = 0.6
 	mi.mesh = m
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.40, 0.26, 0.15)
+	var mat := ToonMaterial.create(Color(0.40, 0.26, 0.15))
 	mi.material_override = mat
 	add_child(mi)
 

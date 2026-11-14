@@ -44,9 +44,12 @@ static func create(parent: Node, wing_color: Color, own_all_materials: bool) -> 
 			var source := part.get_active_material(surface) as StandardMaterial3D
 			var is_wing := source.resource_name == WING_MATERIAL_NAME
 			if not own_all_materials and not is_wing:
+				# 個体ごとに持たない部位も、トゥーン化した共有マテリアルを使う。
+				part.set_surface_override_material(surface, ToonMaterial.shared_from(source))
 				continue
 			# GLBの共有マテリアルを書き換えず、個体ごとに色を保持する。
 			var mat := source.duplicate() as StandardMaterial3D
+			ToonMaterial.apply(mat)
 			if is_wing:
 				mat.albedo_color = wing_color
 			part.set_surface_override_material(surface, mat)

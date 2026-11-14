@@ -76,8 +76,7 @@ func _make_box(sz: Vector3, color: Color) -> MeshInstance3D:
 	var m := BoxMesh.new()
 	m.size = sz
 	mi.mesh = m
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
+	var mat := ToonMaterial.create(color)
 	mi.material_override = mat
 	add_child(mi)
 	return mi

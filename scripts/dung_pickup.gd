@@ -562,8 +562,7 @@ func _build_visual() -> void:
 	_mesh_instance.name = "Body"
 	_static_visual = is_static()
 	_mesh_instance.mesh = _build_mesh(r)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = KIND_COLORS[kind]
+	var mat := ToonMaterial.create(KIND_COLORS[kind])
 	_mesh_instance.material_override = mat
 	add_child(_mesh_instance)
 
