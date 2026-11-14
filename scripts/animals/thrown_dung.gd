@@ -79,6 +79,8 @@ func _land() -> void:
 	var parent: Node = c if c != null else get_parent()
 	if parent != null:
 		var pk := DungPickup.create(_size)
+		if not externally_clocked: # 一人プレイ(外部時計)は記録の再現性のため特殊フンを出さない
+			pk.kind = DungPickup.roll_kind(self)
 		parent.add_child(pk)
 		pk.global_position = Vector3(global_position.x, 0.0, global_position.z)
 	queue_free()

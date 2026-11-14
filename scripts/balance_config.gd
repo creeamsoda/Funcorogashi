@@ -157,10 +157,29 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export var flee_stop_decel: float = 8.0           ## ⑤ 止まる時の減速度(m/s²)
 @export var flee_speed_size_penalty: float = 0.0   ## 大きいフンほど遅く(速度 / (1 + これ×サイズ))。0 = 無効
 
+@export_group("Special Dung")
+## オランウータンが投げるフンの一部が特殊フンになる(対戦のみ。一人プレイは記録の再現性のため出さない)。
+## 盤面上の特殊フンが special_max_on_board 個に達している間は出ない。ブラックホールは特殊フンを引き寄せない。
+## 特殊フンはサイズに関係なく必ず逃げ、範囲内の全プレイヤーと壁を同時に避ける向きへ逃げる。
+@export_range(0.0, 1.0, 0.01) var special_blackhole_chance: float = 0.15 ## オランウータンのフンがブラックホールになる確率
+@export_range(0.0, 1.0, 0.01) var special_speed_chance: float = 0.15     ## オランウータンのフンが高速になる確率
+@export var special_max_on_board: int = 4           ## 盤面上に同時に存在できる特殊フンの最大数
+@export var special_effect_time: float = 6.0        ## ① 獲得後の効果時間(秒)。ブラックホール・高速共通
+@export var blackhole_radius: float = 5.0           ## ② ブラックホールの引き寄せ範囲(m。プレイヤーの球の縁からフンの縁まで)
+@export var blackhole_pull_speed: float = 6.0       ## ③ ブラックホールの引き寄せ速度(m/s)
+@export var speed_boost_move_speed: float = 9.0     ## ④ 高速中の移動速度(m/s。重さ・スロウによる減速なしの固定値)
+@export var special_flee_speed: float = 11.0        ## 特殊フンの逃げる速度(m/s。通常フンの②の代わり)
+@export var special_flee_surprise_time: float = 0.2 ## 特殊フンがプレイヤーに驚く時間(秒。通常フンの①の代わり)
+@export var special_flee_wall_surprise_time: float = 0.15 ## 特殊フンが壁に驚く時間(秒)
+@export var special_flee_threat_radius: float = 8.0 ## 特殊フンが逃げる向きを決める時に避けるプレイヤーの範囲(m。縁から縁)
+@export var special_flee_wall_lookahead: float = 6.0 ## 特殊フンが逃げる向きを評価する時に「その向きへ進む距離」の上限(m。手前に壁があればそこまで)
+@export var special_flee_wall_weight: float = 0.2   ## 逃げる向きの評価で、先が開けている距離(m)に掛ける重み(プレイヤーとの距離(m)に足す)
+
 @export_group("Animals")
 @export var animal_spawn_interval_min: float = 2.0 ## 出現間隔の下限(秒)
 @export var animal_spawn_interval_max: float = 4.0 ## 出現間隔の上限(秒)
 @export var animal_dung_amount_multiplier: float = 1.0 ## 動物が落とすフンの実量倍率(見た目と獲得量の元になる)
+@export var bird_raptor_visible: bool = false     ## 鳥・ラプトルの見た目を表示するか(非表示でも移動・ドロップは行う)
 @export var bird_speed: float = 3.0
 @export var bird_drop_count: int = 3               ## 横断中に落とす個数
 @export var raptor_speed: float = 9.0

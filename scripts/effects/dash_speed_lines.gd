@@ -15,6 +15,10 @@ const LIFETIME := 0.28
 const AMOUNT := 18
 const SPEED_MIN := 6.0
 const SPEED_MAX := 11.0
+## 高速効果の線の色(水色)。
+const RISING_COLOR := Color(0.55, 0.9, 1.0)
+## 渦の線の寿命(突進より長く、回り込む弧が見えるように)。
+const SWIRL_LIFETIME := 0.45
 ## setup_area(加速板の風)の線の太さ倍率。通常合成なので細いと見えにくい。
 const AREA_LINE_WIDTH_SCALE := 2.5
 
@@ -103,6 +107,43 @@ func setup_area(center: Vector3, dir: Vector3, extents: Vector3, color: Color) -
 	mesh.size = Vector2(LINE_WIDTH * AREA_LINE_WIDTH_SCALE, LINE_LENGTH)
 	set_tint(color)
 	emitting = true
+
+
+## 高速効果の線にする(add_child 前に呼ぶ)。突進の半分の本数を、球の下から上へ流す。
+## プレイヤーに付いて動くようローカル座標で出す。
+func setup_rising() -> void:
+	amount = maxi(AMOUNT / 2, 1)
+	local_coords = true
+	set_tint(RISING_COLOR)
+
+
+## 毎フレーム呼ぶ(setup_rising 用)。r = フン球の半径。親(プレイヤー)の原点 = 球の中心。
+func update_rising(active: bool, r: float) -> void:
+	if active:
+		# ローカル -Z(線の飛ぶ向き)を真上へ。ローカル Y はワールド Z、ローカル Z はワールド -Y になる。
+		global_rotation = Vector3(PI * 0.5, 0.0, 0.0)
+		position = Vector3(0.0, -r * 0.6, 0.0)
+		_process_mat.emission_box_extents = Vector3(r * 1.3, r * 1.0, 0.3)
+	if emitting != active:
+		emitting = active
+
+
+## ブラックホールの渦の腕にする(add_child 前に呼ぶ)。線は腕の向き(ローカル -Z)に沿って寝かせ、
+## 内側(ローカル -X)へ寄りながら進む。親を回せばローカル座標ごと回って渦巻きになる。
+func setup_swirl_arm(count: int, color: Color) -> void:
+	amount = maxi(count, 1)
+	lifetime = SWIRL_LIFETIME
+	local_coords = true
+	_line_mat.shader = SHADER_MIX # 加算だと明るい床で白く飛んで色が薄くなるため通常合成
+	_process_mat.direction = Vector3(-0.5, 0.0, -1.0).normalized()
+	_process_mat.initial_velocity_min = SPEED_MIN * 0.6
+	_process_mat.initial_velocity_max = SPEED_MAX * 0.6
+	set_tint(color)
+
+
+## 渦の腕の出現範囲(ローカル: X = 外向き、Z = 回る向き)。
+func set_swirl_extents(radial: float, height: float) -> void:
+	_process_mat.emission_box_extents = Vector3(radial, height, 0.4)
 
 
 ## 毎フレーム呼ぶ。active の間だけ新しい線を出す(止めても出ている線は寿命まで残る)。

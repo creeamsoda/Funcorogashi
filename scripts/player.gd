@@ -101,6 +101,8 @@ var _kb_t := 0.0
 var _dash_prev := false     ## 突進ボタンの前フレーム状態(押下エッジ検出)
 var _slow_t := 0.0          ## オランウータン直撃の軽スロウ残り
 var _slow_factor := 1.0
+var _blackhole_t := 0.0     ## ブラックホール効果の残り(秒)
+var _speed_boost_t := 0.0   ## 高速効果の残り(秒)
 var _dash_suppressed := false
 var _scatter_rng: RandomNumberGenerator
 ## 高低差のあるステージ(Stage.has_elevation)用の上下移動。平らなステージでは使わない(y=半径に固定)。
@@ -121,6 +123,8 @@ var _dash_arrow_shaft: MeshInstance3D
 var _dash_arrow_head: MeshInstance3D
 var _dash_arrow_mat: StandardMaterial3D
 var _speed_lines: DashSpeedLines
+var _blackhole_swirl: BlackholeSwirl
+var _speed_boost_lines: DashSpeedLines
 var _beetle_model: Node3D
 var _beetle_meshes: Array[MeshInstance3D] = []
 var _beetle_materials: Array[StandardMaterial3D] = []
@@ -154,6 +158,10 @@ func _physics_process(delta: float) -> void:
 		_cd_t -= delta
 	if _slow_t > 0.0:
 		_slow_t -= delta
+	if _blackhole_t > 0.0:
+		_blackhole_t -= delta
+	if _speed_boost_t > 0.0:
+		_speed_boost_t -= delta
 	var dash_now := _dash_input_held()
 	if _dash_suppressed:
 		if not dash_now:
@@ -208,6 +216,8 @@ func stop_gameplay() -> void:
 	velocity = Vector3.ZERO
 	_kb_vel = Vector3.ZERO
 	state = State.ROLLING
+	_blackhole_t = 0.0
+	_speed_boost_t = 0.0
 	_update_speed_lines()
 	set_process_unhandled_input(false)
 	for child in get_children():
@@ -251,12 +261,36 @@ func apply_orangutan_hit() -> void:
 		_slow_t = Config.balance.orangutan_slow_time
 
 
+## 特殊フンの回収効果。どちらも効果時間①。取り直したら残り時間を①に戻す。
+func apply_special_dung(kind: DungPickup.Kind) -> void:
+	if not gameplay_active or is_queued_for_deletion():
+		return
+	match kind:
+		DungPickup.Kind.BLACKHOLE:
+			_blackhole_t = Config.balance.special_effect_time
+		DungPickup.Kind.SPEED:
+			_speed_boost_t = Config.balance.special_effect_time
+
+
+## ブラックホール効果中か(範囲②のフンを引き寄せる)。
+func is_blackhole_active() -> bool:
+	return gameplay_active and _blackhole_t > 0.0
+
+
+## 高速効果中か(通常移動が固定速度④)。
+func is_speed_boost_active() -> bool:
+	return gameplay_active and _speed_boost_t > 0.0
+
+
 func _current_slow() -> float:
 	return _slow_factor if _slow_t > 0.0 else 1.0
 
 
 ## 通常移動の速度。保有フンが大きいほど遅く、オランウータン直撃のスロウも掛かる。
+## 高速効果中は重さ・スロウに関係なく固定の速度④(突進には影響しない)。
 func _move_speed() -> float:
+	if is_speed_boost_active():
+		return Config.balance.speed_boost_move_speed
 	return Config.balance.move_speed_base * Config.balance.move_speed_scale(size) * _current_slow()
 
 
@@ -301,6 +335,8 @@ func debug_draw(overlay: DebugOverlay) -> void:
 		var reach := _dash_speed_for(ratio) * (_dash_duration_for(ratio) + Config.balance.dash_end_decel_time * 0.5)
 		overlay.line(base, base + facing * reach, Color.WHITE)
 		overlay.circle(base + facing * reach, 0.3, Color.WHITE, 12)
+	if is_blackhole_active():
+		overlay.circle(base, _radius() + Config.balance.blackhole_radius, Color(0.5, 0.4, 1.0), 48)
 
 
 ## 現在1位を示す仮の王冠表示。順位判定と残り30秒の制御は GameManager が行う。
@@ -878,6 +914,12 @@ func _build_visual() -> void:
 	_build_dash_arrow(col)
 	_speed_lines = DashSpeedLines.new()
 	add_child(_speed_lines)
+	_blackhole_swirl = BlackholeSwirl.new()
+	add_child(_blackhole_swirl)
+	_speed_boost_lines = DashSpeedLines.new()
+	_speed_boost_lines.name = "SpeedBoostLines"
+	_speed_boost_lines.setup_rising()
+	add_child(_speed_boost_lines)
 
 	_crown = Label3D.new()
 	_crown.name = "LeaderCrown"
@@ -1012,6 +1054,8 @@ func _update_speed_lines() -> void:
 		return
 	var active := gameplay_active and is_dash_invincible() and _dash_t < _dash_duration
 	_speed_lines.update_emitter(active, _dash_dir, global_position, _radius())
+	_blackhole_swirl.update_swirl(is_blackhole_active(), _radius())
+	_speed_boost_lines.update_rising(is_speed_boost_active(), _radius())
 
 
 ## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。最大溜めで金色になる。

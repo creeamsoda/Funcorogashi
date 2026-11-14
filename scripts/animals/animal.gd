@@ -71,7 +71,7 @@ func _dung_parent() -> Node:
 	var c := get_tree().get_first_node_in_group("dung_container")
 	return c if c != null else get_parent()
 
-func _make_box(sz: Vector3, color: Color) -> void:
+func _make_box(sz: Vector3, color: Color) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var m := BoxMesh.new()
 	m.size = sz
@@ -80,3 +80,4 @@ func _make_box(sz: Vector3, color: Color) -> void:
 	mat.albedo_color = color
 	mi.material_override = mat
 	add_child(mi)
+	return mi

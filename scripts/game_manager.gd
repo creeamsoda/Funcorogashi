@@ -20,7 +20,7 @@ var score_profile := ""
 var final_results: Array = []
 var npc_hit_counts: Dictionary = {}
 var players: Array[Player] = []
-var stats := {}          ## player_id -> {dash_hits:int, pickups:int}
+var stats := {}          ## player_id -> {dash_hits:int, dash_hits_received:int, pickups:int}
 var time_left := 0.0
 var _running := false
 var _dung: Node3D
@@ -110,7 +110,7 @@ func _spawn_players() -> void:
 		p.global_position = course.player_start if mode == "solo" else spots[i % spots.size()]
 		p.suppress_dash_until_release()
 		players.append(p)
-		stats[i] = {"dash_hits": 0, "pickups": 0}
+		stats[i] = {"dash_hits": 0, "dash_hits_received": 0, "pickups": 0}
 		p.size_changed.connect(_on_size_changed)
 		p.dash_hit.connect(_on_dash_hit)
 		_log_assignment(p)
@@ -167,7 +167,9 @@ func _on_dash_hit(attacker_id: int, victim_id: int) -> void:
 		return
 	if stats.has(attacker_id):
 		stats[attacker_id]["dash_hits"] += 1
-	if mode == "solo" and not stats.has(victim_id) and stats.has(attacker_id):
+	if stats.has(victim_id):
+		stats[victim_id]["dash_hits_received"] += 1
+	elif mode == "solo" and stats.has(attacker_id):
 		npc_hit_counts[victim_id] = int(npc_hit_counts.get(victim_id, 0)) + 1
 		_hud.set_npc_hits(int(stats[attacker_id]["dash_hits"]))
 
@@ -210,6 +212,7 @@ func _end_match() -> void:
 			"player_id": p.player_id,
 			"size": p.size,
 			"dash_hits": stats[p.player_id]["dash_hits"],
+			"dash_hits_received": stats[p.player_id]["dash_hits_received"],
 		})
 	final_results = results.duplicate(true)
 	match_ended.emit(results.duplicate(true))

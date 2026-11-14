@@ -13,6 +13,10 @@ extends CharacterBody3D
 ## 見た目は細長い三角形で、頂点側が進行方向。判定(壁・回収・距離)は向きに依らない円のまま。
 ## flee_static_max_size 以下の小さいフンは逃げず(動かない)、見た目も球(仮。後で差し替え予定)。
 ## ノード原点は地面(y=0)。判定は半径ぶん上に置く。
+## 特殊フン(kind が NORMAL 以外): 色で見分ける。サイズに関係なく必ず逃げ、速度・驚き時間は専用の値。
+##   逃げる向きは「範囲内の全プレイヤーから離れる」と「先が開けている(壁から遠い)」を合わせて評価した一番よい向き。
+##   回収したプレイヤーに効果(ブラックホール/高速)を与える。
+## ブラックホール効果中のプレイヤーの範囲内にいる通常フンは、逃げずにそのプレイヤーへ引き寄せられる(特殊フンは寄らない)。
 
 signal collected(size: float)
 
@@ -32,10 +36,14 @@ const SHAPE_WIDTH := 1.4
 const SHAPE_THICK := 0.9
 
 enum FleeState { IDLE, SURPRISED, RUNNING, BRAKING }
+enum Kind { NORMAL, BLACKHOLE, SPEED }
+const SPECIAL_GROUP := "special_dung"
+const KIND_COLORS := [Color(0.38, 0.24, 0.14), Color(0.05, 0.08, 0.32), Color(0.45, 0.85, 1.0)]
 const STATE_COLORS := [Color.WHITE, Color(1.0, 0.9, 0.2), Color(0.2, 1.0, 0.3), Color(0.2, 0.9, 1.0)]
 
 var size: float = 0.5
 var owner_id: int = -1
+var kind: Kind = Kind.NORMAL     ## add_child 前に設定する
 var collectible_at: float = 0.0  ## この秒(get_ticks/1000)以降 owner 本人も回収可
 
 var _mesh_instance: MeshInstance3D
@@ -65,6 +73,33 @@ static func create(p_size: float, p_owner_id: int = -1) -> DungPickup:
 	return d
 
 
+## オランウータンのフン用: 設定の確率で特殊フンの種類を選ぶ(どれにも当たらなければ NORMAL)。
+## 盤面上の特殊フンが上限 special_max_on_board 個に達していれば NORMAL。context はツリー参照用の任意のノード。
+static func roll_kind(context: Node) -> Kind:
+	var b := Config.balance
+	if count_special_on_board(context.get_tree()) >= b.special_max_on_board:
+		return Kind.NORMAL
+	var r := randf()
+	if r < b.special_blackhole_chance:
+		return Kind.BLACKHOLE
+	if r < b.special_blackhole_chance + b.special_speed_chance:
+		return Kind.SPEED
+	return Kind.NORMAL
+
+
+## 盤面上の(回収済みで消える途中を除く)特殊フンの数。
+static func count_special_on_board(tree: SceneTree) -> int:
+	var n := 0
+	for node in tree.get_nodes_in_group(SPECIAL_GROUP):
+		if not node.is_queued_for_deletion() and not (node as DungPickup)._collected:
+			n += 1
+	return n
+
+
+func is_special() -> bool:
+	return kind != Kind.NORMAL
+
+
 func _ready() -> void:
 	collision_layer = DUNG_LAYER
 	collision_mask = Player.WALL_LAYER
@@ -75,6 +110,8 @@ func _ready() -> void:
 	_build_visual()
 	_update_visual()
 	add_to_group(DebugOverlay.GROUP)
+	if is_special():
+		add_to_group(SPECIAL_GROUP)
 
 
 func _process(_dt: float) -> void:
@@ -87,7 +124,14 @@ func _physics_process(delta: float) -> void:
 		_placed = true
 		_push_out_of_fences()
 	_sync_static_visual()
-	if _collected or not Config.balance.flee_enabled or is_static():
+	if _collected:
+		return
+	var puller := _blackhole_puller()
+	if puller != null:
+		_move_pulled(puller)
+		_update_visual()
+		return
+	if not Config.balance.flee_enabled or is_static():
 		return
 	_update_flee(delta)
 	velocity = _heading * _speed
@@ -116,6 +160,8 @@ func _on_body_entered(body: Node) -> void:
 	_collected = true # 同一フレームの複数body_enteredでも1回だけ加算する。
 	p.add_size(gain)
 	p.play_pickup_se(gain)
+	if is_special():
+		p.apply_special_dung(kind)
 	collected.emit(gain)
 	queue_free()
 
@@ -154,8 +200,55 @@ func _ground_height_at(pos: Vector3, ref_y: float) -> float:
 
 
 ## 小さすぎて逃げない(動かない)フンか。
+## 特殊フンは小さくても逃げる。
 func is_static() -> bool:
-	return size <= Config.balance.flee_static_max_size
+	return not is_special() and size <= Config.balance.flee_static_max_size
+
+
+## --- ブラックホール ---
+
+## 自分を引き寄せるブラックホール効果中のプレイヤー(範囲内で一番近い)。いなければ null。
+## 本人が回収できない間の自分のドロップは引き寄せない(くっついたまま取れなくなるため)。特殊フンも引き寄せない。
+func _blackhole_puller() -> Player:
+	if is_special():
+		return null
+	var best: Player = null
+	var best_d := INF
+	for node in get_tree().get_nodes_in_group("player"):
+		var p := node as Player
+		if p == null or not p.gameplay_active or not p.is_blackhole_active():
+			continue
+		if owner_id == p.player_id and _now() < collectible_at:
+			continue
+		var d := _edge_distance(p)
+		if d <= Config.balance.blackhole_radius and d < best_d:
+			best_d = d
+			best = p
+	return best
+
+
+## 引き寄せ速度③でプレイヤーへ進む(壁・フェンスには当たる)。向きはプレイヤーから逃げようとする向きのまま。
+func _move_pulled(p: Player) -> void:
+	var to := p.global_position - global_position
+	to.y = 0.0
+	if to.length() < 0.001:
+		return
+	to = to.normalized()
+	_heading = -to
+	_speed = 0.0
+	_wall_surprise = false
+	_enter_state(FleeState.IDLE)
+	velocity = to * Config.balance.blackhole_pull_speed
+	var before := global_position
+	move_and_slide()
+	if Stage.has_elevation():
+		var y := _ground_height_at(global_position, before.y)
+		if is_nan(y):
+			global_position = before # 段差は下りない
+		else:
+			global_position.y = y
+	else:
+		global_position.y = 0.0
 
 
 ## --- 逃走 ---
@@ -206,13 +299,18 @@ func _surprise(by_wall: bool) -> void:
 
 
 func _surprise_duration() -> float:
-	return Config.balance.flee_wall_surprise_time if _wall_surprise else Config.balance.flee_surprise_time
+	var b := Config.balance
+	if is_special():
+		return b.special_flee_wall_surprise_time if _wall_surprise else b.special_flee_surprise_time
+	return b.flee_wall_surprise_time if _wall_surprise else b.flee_surprise_time
 
 
 ## 今この瞬間に逃げるとしたらの向き。一番近いプレイヤーから離れる向き(いなければ今の向き)。
 ## プレイヤーに驚いた時は壁を避けない(壁に向かえば前方の壁でまた驚く)。
 ## 壁に驚いた時は、離れる向きから左右へ広げて前方③以内に壁がない一番近い向き。全方向ふさがりなら ZERO。
 func _escape_direction() -> Vector3:
+	if is_special():
+		return _smart_escape_direction()
 	var away := _heading
 	var nearest := _nearest_threat()
 	if nearest != null:
@@ -251,7 +349,8 @@ func _start_running() -> void:
 		return
 	_heading = dir
 	_wall_surprise = false
-	_speed = Config.balance.flee_speed / (1.0 + maxf(Config.balance.flee_speed_size_penalty, 0.0) * size)
+	var base_speed: float = Config.balance.special_flee_speed if is_special() else Config.balance.flee_speed
+	_speed = base_speed / (1.0 + maxf(Config.balance.flee_speed_size_penalty, 0.0) * size)
 	_enter_state(FleeState.RUNNING)
 
 
@@ -268,6 +367,60 @@ func _find_free_direction(base: Vector3) -> Vector3:
 				return cand
 		angle += step
 	return Vector3.ZERO
+
+
+## 特殊フンの逃げる向き。全周を flee_wall_search_step 度刻みで調べ、前方③以内に壁がない向きのうち一番よい向き。
+## 評価: その向きへ壁の手前(最大 special_flee_wall_lookahead)まで進んだとした時、範囲内の全プレイヤーとの距離
+## (途中でプレイヤーへ近づく向きなら最接近距離)の最小値 + 平均の少し + 開けた距離 × special_flee_wall_weight。
+## → 挟まれたら横へ、壁際で追われたら壁沿いへ、角へは逃げ込まない。
+## 壁に驚いた時は、驚いた壁へ近づく向きは選ばない。全方向ふさがりなら ZERO。
+func _smart_escape_direction() -> Vector3:
+	var b := Config.balance
+	var threat_r := maxf(b.special_flee_threat_radius, 0.01)
+	var origin := Vector3(global_position.x, 0.0, global_position.z)
+	var threats: Array[Vector3] = []
+	for p in _threats():
+		if _edge_distance(p) <= threat_r:
+			threats.append(Vector3(p.global_position.x, 0.0, p.global_position.z))
+	var lookahead := maxf(b.special_flee_wall_lookahead, 0.01)
+	var margin := _radius() + maxf(b.flee_moving_alert_radius, 0.0)
+	var step := clampf(b.flee_wall_search_step, 1.0, 90.0)
+	var count := maxi(int(round(360.0 / step)), 4)
+	var best := Vector3.ZERO
+	var best_score := -INF
+	for i in count:
+		var cand := Vector3.BACK.rotated(Vector3.UP, TAU * i / count)
+		if _wall_surprise and cand.dot(_wall_normal) < -0.01:
+			continue
+		if _blocked_ahead(cand):
+			continue
+		var open := _open_distance(cand, lookahead + margin)
+		var run := clampf(open - margin, 0.0, lookahead)
+		var score := b.special_flee_wall_weight * run + 0.02 * cand.dot(_heading) # 同点なら今の向き(ぶれ防止)
+		if not threats.is_empty():
+			var nearest := INF
+			var total := 0.0
+			for t in threats:
+				# 進む区間上でそのプレイヤーに一番近づく点(離れる向きなら出発点ではなく到達点で測る)
+				var along := clampf((t - origin).dot(cand), 0.0, run)
+				var d := t.distance_to(origin + cand * (along if along > 0.0 else run))
+				nearest = minf(nearest, d)
+				total += d
+			score += nearest + 0.1 * total / threats.size()
+		if score > best_score:
+			best_score = score
+			best = cand
+	return best
+
+
+## 向き dir へ壁(フェンス含む)まで何 m 開けているか(最大 reach)。
+func _open_distance(dir: Vector3, reach: float) -> float:
+	var origin := global_position + Vector3(0, _radius() + FLOOR_CLEARANCE, 0)
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, Player.WALL_LAYER, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return reach
+	return origin.distance_to(hit["position"])
 
 
 ## 向き dir の前方③以内に壁(フェンス含む)があるか。
@@ -400,7 +553,7 @@ func _build_visual() -> void:
 	_static_visual = is_static()
 	_mesh_instance.mesh = _build_mesh(r)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.38, 0.24, 0.14)
+	mat.albedo_color = KIND_COLORS[kind]
 	_mesh_instance.material_override = mat
 	add_child(_mesh_instance)
 
