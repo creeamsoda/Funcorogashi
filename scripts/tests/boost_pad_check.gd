@@ -1,6 +1,6 @@
 extends Node3D
 ## 加速板ステージ(BoostPads)の headless 自動テスト:
-##  layout : 板が2枚(右上・左下、横幅1/3の位置、奥行き方向が長辺)、上空の風が常に出ている
+##  layout : 板が2枚(右上・左下、横幅1/3の位置、奥行き方向が長辺)、上空の風エフェクトは出ない
 ##  boost  : 歩いて板に乗ると即座に突進無敵になり、歩く向きへ突進する(加速状態を経ない)
 ##  off_pad: 板の外では突進しない
 ##  stunned: スタン中は板に乗っても突進しない
@@ -40,13 +40,11 @@ func _test_layout(stage: Stage) -> void:
 	for pad in pads:
 		ok = ok and absf(absf(pad.center.x) - third) < 0.01 and pad.size.y > pad.size.x
 		ok = ok and signf(pad.center.x) == -signf(pad.center.y) # 右上(x+, z-) / 左下(x-, z+)
-	var winds := 0
-	for node in stage.find_children("BoostWind*", "", true, false):
-		if (node as GPUParticles3D).emitting:
-			winds += 1
-	print("  [layout] pads=%d winds_emitting=%d" % [pads.size(), winds])
-	if not ok or winds != 2:
-		_failures.append("layout pads=%d winds=%d" % [pads.size(), winds])
+	var meshes := stage.get_tree().get_nodes_in_group("boost_pad").size()
+	var winds := stage.find_children("BoostWind*", "", true, false).size()
+	print("  [layout] pads=%d meshes=%d winds=%d" % [pads.size(), meshes, winds])
+	if not ok or meshes != 2 or winds != 0:
+		_failures.append("layout pads=%d meshes=%d winds=%d" % [pads.size(), meshes, winds])
 
 
 func _test_boost() -> void:

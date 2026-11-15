@@ -29,9 +29,8 @@ const LAYOUT_PATHS := [
 	"res://resources/stages/pedestal.tres",
 	"res://resources/stages/boost_pads.tres",
 ]
-## 加速板の色(板・風)。
-const BOOST_PAD_COLOR := Color(1.0, 0.55, 0.1)
-const BOOST_WIND_COLOR := Color(0.95, 0.30, 0.0)  ## 板より濃いオレンジ(板の上でも見えるように)
+## 加速板の床面(オレンジの下地+外へ広がる灰色の枠線。色・線は BalanceConfig)。
+const BOOST_PAD_SHADER := preload("res://resources/shaders/boost_pad.gdshader")
 ## 台座の色。
 const PEDESTAL_TOP_COLOR := Color(0.97, 0.97, 0.97)   ## 天面・スロープ上面
 const PEDESTAL_SIDE_COLOR := Color(0.32, 0.32, 0.35)  ## 台座側面・スロープ側面
@@ -49,6 +48,7 @@ static var _active: Stage = null
 var layout: StageLayout
 var _fence_rects: Array[Dictionary] = []
 var _pillar_rects: Array[Dictionary] = []  ## 杭(_fence_rects と同じ形式)。押し出し・距離はフェンスと同じに扱う  ## {center: Vector2, axis: Vector2(長さ方向), half: Vector2(長さ/2, 厚み/2)}
+var _boost_pad_material: ShaderMaterial  ## 加速板の床面(全板で共有。BalanceConfig を毎フレーム反映)
 
 
 static func load_layout(index: int) -> StageLayout:
@@ -361,17 +361,18 @@ func _rock_root() -> Node3D:
 	return rocks
 
 
-## 加速板: 床に貼った薄いオレンジの板(判定なし)と、上空に常時流れるオレンジの風(突進無敵と同じ流線)。
+## 加速板: 床に貼った薄い板(判定なし。オレンジ地に灰色の枠線が外へ広がる)。上空の風エフェクトは出さない。
 func _build_boost_pads() -> void:
 	if layout == null or layout.boost_pads.is_empty():
 		return
 	var pads := Node3D.new()
 	pads.name = "BoostPads"
 	add_child(pads)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = BOOST_PAD_COLOR
-	mat.emission_enabled = true
-	mat.emission = BOOST_PAD_COLOR * 0.25
+	_boost_pad_material = ShaderMaterial.new()
+	_boost_pad_material.shader = BOOST_PAD_SHADER
+	_sync_boost_pad_material()
+	# 調整パネル(F1)の変更をその場で見られるように毎フレーム反映する(一時停止中も届く)
+	get_tree().process_frame.connect(_sync_boost_pad_material)
 	for i in layout.boost_pads.size():
 		var spec := layout.boost_pads[i]
 		var mi := MeshInstance3D.new()
@@ -379,15 +380,21 @@ func _build_boost_pads() -> void:
 		var mesh := BoxMesh.new()
 		mesh.size = Vector3(spec.size.x, 0.02, spec.size.y)
 		mi.mesh = mesh
-		mi.material_override = mat
+		mi.material_override = _boost_pad_material
+		mi.set_instance_shader_parameter("pad_half_size", spec.size * 0.5)
 		mi.position = Vector3(spec.center.x, 0.011, spec.center.y)
 		mi.add_to_group("boost_pad")
 		pads.add_child(mi)
-		var wind := DashSpeedLines.new()
-		wind.name = "BoostWind%d" % i
-		pads.add_child(wind)
-		wind.setup_area(Vector3(spec.center.x, 0.8, spec.center.y), Vector3(spec.wind_dir.x, 0.0, spec.wind_dir.y),
-			Vector3(spec.size.x * 0.5, 0.6, spec.size.y * 0.5), BOOST_WIND_COLOR)
+
+
+## 加速板の床面の色・線を BalanceConfig から反映する(全板で1つのマテリアルを共有。板のサイズは instance uniform)。
+func _sync_boost_pad_material() -> void:
+	var bal := Config.balance
+	_boost_pad_material.set_shader_parameter("base_color", bal.boost_pad_base_color)
+	_boost_pad_material.set_shader_parameter("line_color", bal.boost_pad_line_color)
+	_boost_pad_material.set_shader_parameter("line_spacing", maxf(bal.boost_pad_line_spacing, 0.01))
+	_boost_pad_material.set_shader_parameter("line_width", bal.boost_pad_line_width)
+	_boost_pad_material.set_shader_parameter("scroll_speed", bal.boost_pad_line_speed)
 
 
 ## 中央の台座(形は PedestalMesh)。見た目と判定は同じ三角形から作る(判定は1つの ConcavePolygonShape3D)。

@@ -19,6 +19,12 @@ extends Resource
 @export var floor_color: Color = Color(0.66, 0.50, 0.36)  ## 床の色(土をイメージした明るめの茶色)。試合開始時に反映
 ## 外壁の岩の色(黄土色)。モデルの面ごとの濃淡は明るさの比として残す。起動時に反映
 @export var rock_color: Color = Color(0.74, 0.58, 0.26)
+## 加速板: オレンジの下地に灰色の枠線が中央から外へ広がる。試合開始時に反映
+@export var boost_pad_base_color: Color = Color(1.0, 0.55, 0.1)   ## 下地の色
+@export var boost_pad_line_color: Color = Color(0.55, 0.55, 0.55) ## 枠線の色
+@export var boost_pad_line_spacing: float = 0.6  ## 枠線の間隔(m)
+@export var boost_pad_line_width: float = 0.2    ## 枠線の太さ(m。どの辺も同じ)
+@export var boost_pad_line_speed: float = 0.6    ## 枠線が外へ広がる速さ(m/s)
 
 @export_group("Solo NPC")
 @export var solo_npc_speed: float = 3.0            ## 横断の経路進行速度(m/s)

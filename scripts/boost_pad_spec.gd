@@ -5,5 +5,5 @@ extends Resource
 
 @export var center := Vector2.ZERO
 @export var size := Vector2(2.5, 6.0)
-## 板の上空に出す風(流線)の向き(x, z)。
+## 板の上空に出していた風(流線)の向き(x, z)。現在は風を出さないため未使用。
 @export var wind_dir := Vector2(0, -1)

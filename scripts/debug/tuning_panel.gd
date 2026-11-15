@@ -155,6 +155,13 @@ func _make_editor(prop: Dictionary) -> Control:
 			spin.value = float(value)
 			spin.value_changed.connect(func(v: float) -> void: _set_value(key, int(v) if is_int else v))
 			return spin
+		TYPE_COLOR:
+			var picker := ColorPickerButton.new()
+			picker.custom_minimum_size = Vector2(140, 28)
+			picker.color = value
+			picker.edit_alpha = false
+			picker.color_changed.connect(func(c: Color) -> void: _set_value(key, c))
+			return picker
 	var unsupported := Label.new()
 	unsupported.text = str(value)
 	return unsupported
