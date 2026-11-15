@@ -760,8 +760,8 @@ func _build_visual() -> void:
 	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 
-	# 点滅で色を書き換えるため、全マテリアルを個体ごとに持つ。
-	_beetle = BeetleModel.create(self, col, true)
+	# 全身をフン球と同じ色で塗る(点滅で色を書き換えるため、マテリアルは個体ごと)。
+	_beetle = BeetleModel.create(self, col)
 	for mat in _beetle.materials:
 		_beetle_base_colors.append(mat.albedo_color)
 	_dash_arrow = DashArrow.new(col)

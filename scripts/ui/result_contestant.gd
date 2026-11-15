@@ -60,8 +60,8 @@ func _build_preview() -> void:
 	ball.position.y = radius
 	presentation.add_child(ball)
 
-	# 結果画面では点滅しないので、羽のマテリアルだけを個体ごとに複製する。
-	var beetle := BeetleModel.create(presentation, Player.color_for(player_id), false)
+	# 全身をプレイヤー色で塗る。
+	var beetle := BeetleModel.create(presentation, Player.color_for(player_id))
 	beetle.root.position.z = -beetle.distance_from_ball(radius)
 
 	var combined_bounds := BeetleModel.mesh_bounds(beetle.meshes, presentation).merge(ball.transform * ball.get_aabb())
