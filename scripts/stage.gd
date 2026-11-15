@@ -1,7 +1,7 @@
 class_name Stage
 extends Node3D
 ## ステージ: 床 + 外壁(長方形 or 円形。layout.arena_shape) + 全体俯瞰カメラ + ライト。
-## すべてコード生成(primitivesのみ)。壁は "wall" グループに入れる(突進の壁判定用)。
+## コード生成(外壁の見た目だけ岩モデル。RockWall)。壁は "wall" グループに入れる(突進の壁判定用)。
 
 ## 長方形アリーナ内寸の半分(x, z)。円形アリーナでもこの長方形の内側に収まる(動物の出入り判定の外枠)。
 ## 実際の内外判定は Stage.is_inside_arena / clamp_to_arena を使う。
@@ -11,6 +11,8 @@ const STAGE_SIZE := Vector2(HALF_X * 2.0, HALF_Z * 2.0)  ## 内寸 (x, z)
 const WALL_HEIGHT := 2.0
 const WALL_THICK := 0.6
 const FLOOR_THICK := 0.5
+## 床の見た目だけ外壁の外まで広げる幅(外壁の岩の根元に下の空間が見えないように)。判定は内寸のまま。
+const FLOOR_VISUAL_MARGIN := 2.4
 ## フェンス: 見た目は低く(後で特殊フンが飛び越える前提)、判定は高くして大きなフン球も越えられないようにする。
 const FENCE_THICK := 0.4
 const FENCE_VISUAL_HEIGHT := 0.9
@@ -294,8 +296,8 @@ func _build_floor() -> void:
 	if is_circle():
 		var r := arena_radius() + WALL_THICK
 		var cyl := CylinderMesh.new()
-		cyl.top_radius = r
-		cyl.bottom_radius = r
+		cyl.top_radius = arena_radius() + FLOOR_VISUAL_MARGIN
+		cyl.bottom_radius = cyl.top_radius
 		cyl.height = FLOOR_THICK
 		cyl.radial_segments = CIRCLE_WALL_SEGMENTS
 		mi.mesh = cyl
@@ -305,10 +307,10 @@ func _build_floor() -> void:
 		shape = cs
 	else:
 		var mesh := BoxMesh.new()
-		mesh.size = Vector3(STAGE_SIZE.x, FLOOR_THICK, STAGE_SIZE.y)
+		mesh.size = Vector3(STAGE_SIZE.x + FLOOR_VISUAL_MARGIN * 2.0, FLOOR_THICK, STAGE_SIZE.y + FLOOR_VISUAL_MARGIN * 2.0)
 		mi.mesh = mesh
 		var bs := BoxShape3D.new()
-		bs.size = mesh.size
+		bs.size = Vector3(STAGE_SIZE.x, FLOOR_THICK, STAGE_SIZE.y)
 		shape = bs
 	mi.position = Vector3(0, -FLOOR_THICK * 0.5, 0)
 	body.add_child(mi)
@@ -335,17 +337,28 @@ func _build_walls() -> void:
 	add_child(walls)
 	for s in specs:
 		var body := _wall_body(walls)
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(s[2], WALL_HEIGHT, s[3])
-		var mi := MeshInstance3D.new()
-		mi.mesh = mesh
-		body.add_child(mi)
 		var col := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
-		shape.size = mesh.size
+		shape.size = Vector3(s[2], WALL_HEIGHT, s[3])
 		col.shape = shape
 		body.add_child(col)
 		body.position = Vector3(s[0], WALL_HEIGHT * 0.5, s[1])
+	# 見た目は岩(内面の4辺に沿って並べる)。
+	var rocks := _rock_root()
+	var rng := RockWall.new_rng()
+	RockWall.build_line(rocks, Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3.BACK, rng)     # 北
+	RockWall.build_line(rocks, Vector3(hx, 0, -hz), Vector3(hx, 0, hz), Vector3.LEFT, rng)       # 東
+	RockWall.build_line(rocks, Vector3(hx, 0, hz), Vector3(-hx, 0, hz), Vector3.FORWARD, rng)    # 南
+	RockWall.build_line(rocks, Vector3(-hx, 0, hz), Vector3(-hx, 0, -hz), Vector3.RIGHT, rng)    # 西
+
+
+## 外壁の見た目(岩)をまとめるノード。判定は持たない。
+func _rock_root() -> Node3D:
+	var rocks := Node3D.new()
+	rocks.name = "WallRocks"
+	add_child(rocks)
+	return rocks
+
 
 ## 加速板: 床に貼った薄いオレンジの板(判定なし)と、上空に常時流れるオレンジの風(突進無敵と同じ流線)。
 func _build_boost_pads() -> void:
@@ -398,7 +411,8 @@ func _build_pedestal() -> void:
 	body.add_child(col)
 
 
-## 円形外壁: 箱を円周に並べる。内面が arena_radius に接するよう配置し、継ぎ目が空かないよう少し長くする。
+## 円形外壁: 判定の箱を円周に並べる。内面が arena_radius に接するよう配置し、継ぎ目が空かないよう少し長くする。
+## 見た目は箱ではなく岩(RockWall)。
 func _build_circle_walls() -> void:
 	var walls := Node3D.new()
 	walls.name = "Walls"
@@ -406,21 +420,17 @@ func _build_circle_walls() -> void:
 	var r := arena_radius() + WALL_THICK * 0.5
 	var seg_len := 2.0 * (arena_radius() + WALL_THICK) * tan(PI / CIRCLE_WALL_SEGMENTS) + 0.05
 	var size := Vector3(seg_len, WALL_HEIGHT, WALL_THICK)
-	var mesh := BoxMesh.new()
-	mesh.size = size
 	var shape := BoxShape3D.new()
 	shape.size = size
 	for i in CIRCLE_WALL_SEGMENTS:
 		var a := TAU * float(i) / float(CIRCLE_WALL_SEGMENTS)
 		var body := _wall_body(walls)
-		var mi := MeshInstance3D.new()
-		mi.mesh = mesh
-		body.add_child(mi)
 		var col := CollisionShape3D.new()
 		col.shape = shape
 		body.add_child(col)
 		body.position = Vector3(cos(a) * r, WALL_HEIGHT * 0.5, sin(a) * r)
 		body.rotation.y = -a + PI * 0.5 # 箱の長さ方向(X)を接線方向へ
+	RockWall.build_circle(_rock_root(), arena_radius(), RockWall.new_rng())
 
 
 func _build_camera() -> void:
