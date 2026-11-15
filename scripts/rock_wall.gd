@@ -23,7 +23,11 @@ const YAW_JITTER_DEG := 12.0
 ## 岩の正面が外壁の内面からアリーナ側へはみ出す量の範囲(負なら内面より奥)。
 const INSET_RANGE := Vector2(-0.1, 0.15)
 
+## モデルのグレーのうち Config.balance.rock_color そのものになる明るさ(面の濃淡の中央付近)。
+const ROCK_REFERENCE_GRAY := 0.58
+
 static var _scenes: Array[PackedScene] = []
+static var _tinted_cache: Dictionary = {}  ## 元マテリアル → 黄土色に塗ったトゥーンマテリアル
 static var _front_depth: Array[float] = []  ## 原点から正面(+Z)の端までの距離
 static var _width: Array[float] = []        ## X方向の幅
 
@@ -78,9 +82,24 @@ static func _apply_toon(node: Node) -> void:
 		for surface in mi.mesh.get_surface_count():
 			var source := mi.mesh.surface_get_material(surface) as BaseMaterial3D
 			if source != null:
-				mi.set_surface_override_material(surface, ToonMaterial.shared_from(source))
+				mi.set_surface_override_material(surface, _tinted(source))
 	for child in node.get_children():
 		_apply_toon(child)
+
+
+## 元マテリアルのグレーの明るさを保ったまま Config.balance.rock_color に塗ったトゥーンマテリアル(元ごとに1つ)。
+static func _tinted(source: BaseMaterial3D) -> BaseMaterial3D:
+	if _tinted_cache.has(source):
+		return _tinted_cache[source]
+	var mat := ToonMaterial.shared_from(source).duplicate() as BaseMaterial3D
+	var rock_color := Config.balance.rock_color
+	var k := source.albedo_color.get_luminance() / ROCK_REFERENCE_GRAY
+	mat.albedo_color = Color(
+		clampf(rock_color.r * k, 0.0, 1.0),
+		clampf(rock_color.g * k, 0.0, 1.0),
+		clampf(rock_color.b * k, 0.0, 1.0))
+	_tinted_cache[source] = mat
+	return mat
 
 
 static func _ensure_loaded() -> void:

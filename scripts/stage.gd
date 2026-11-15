@@ -313,6 +313,7 @@ func _build_floor() -> void:
 		bs.size = Vector3(STAGE_SIZE.x, FLOOR_THICK, STAGE_SIZE.y)
 		shape = bs
 	mi.position = Vector3(0, -FLOOR_THICK * 0.5, 0)
+	mi.material_override = ToonMaterial.create(Config.balance.floor_color)
 	body.add_child(mi)
 	var col := CollisionShape3D.new()
 	col.shape = shape
