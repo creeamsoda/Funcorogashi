@@ -99,6 +99,7 @@ var _dash_arrow: DashArrow
 var _speed_lines: DashSpeedLines
 var _blackhole_swirl: BlackholeSwirl
 var _speed_boost_lines: DashSpeedLines
+var _afterimage: AfterimageTrail
 var _crown: LeaderCrown
 
 
@@ -774,6 +775,12 @@ func _build_visual() -> void:
 	_speed_boost_lines.name = "SpeedBoostLines"
 	_speed_boost_lines.setup_rising()
 	add_child(_speed_boost_lines)
+	_afterimage = AfterimageTrail.new()
+	_afterimage.name = "Afterimage"
+	var ghost_targets: Array[MeshInstance3D] = [_ball_mi]
+	ghost_targets.append_array(_beetle.meshes)
+	_afterimage.setup(ghost_targets, col)
+	add_child(_afterimage)
 	_crown = LeaderCrown.new()
 	add_child(_crown)
 
@@ -818,6 +825,7 @@ func _update_speed_lines() -> void:
 	_speed_lines.update_emitter(active, _dash_dir, global_position, _radius())
 	_blackhole_swirl.update_swirl(is_blackhole_active(), _radius())
 	_speed_boost_lines.update_rising(is_speed_boost_active(), _radius())
+	_afterimage.set_active(is_speed_boost_active())
 
 
 ## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。

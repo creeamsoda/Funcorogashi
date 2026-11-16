@@ -179,6 +179,10 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export var blackhole_radius: float = 5.0           ## ② ブラックホールの引き寄せ範囲(m。プレイヤーの球の縁からフンの縁まで)
 @export var blackhole_pull_speed: float = 6.0       ## ③ ブラックホールの引き寄せ速度(m/s)
 @export var speed_boost_move_speed: float = 9.0     ## ④ 高速中の移動速度(m/s。重さ・スロウによる減速なしの固定値)
+@export var afterimage_interval: float = 0.05       ## 高速中の残像を出す間隔(秒。0.05 = 20Hz)
+@export var afterimage_fade_in: float = 0.03        ## 残像が不透明度 0 から afterimage_alpha まで上がる時間(秒)
+@export var afterimage_lifetime: float = 0.1        ## 残像が afterimage_alpha から 0 まで下がって消える時間(秒。フェードインの後)
+@export_range(0.0, 1.0, 0.01) var afterimage_alpha: float = 0.4 ## 残像の最大の不透明度
 @export var special_flee_speed: float = 11.0        ## 特殊フンの逃げる速度(m/s。通常フンの②の代わり)
 @export var special_flee_surprise_time: float = 0.2 ## 特殊フンがプレイヤーに驚く時間(秒。通常フンの①の代わり)
 @export var special_flee_wall_surprise_time: float = 0.15 ## 特殊フンが壁に驚く時間(秒)
