@@ -127,6 +127,9 @@ func _check_models() -> bool:
 				var part_mat := part.get_active_material(surface) as StandardMaterial3D
 				colors_ok = colors_ok and part_mat != null and part_mat.albedo_texture == null \
 					and part_mat.albedo_color.is_equal_approx(expected_color)
+		# フン球も本編と同じくプレイヤー色。
+		var ball_mat := ball.material_override as StandardMaterial3D
+		colors_ok = colors_ok and ball_mat != null and ball_mat.albedo_color.is_equal_approx(expected_color)
 		for other in wing_materials:
 			colors_ok = colors_ok and material != other
 		wing_materials.append(material)

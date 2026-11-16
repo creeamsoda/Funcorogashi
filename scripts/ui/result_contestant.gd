@@ -55,13 +55,14 @@ func _build_preview() -> void:
 	sphere.radius = radius
 	sphere.height = radius * 2.0
 	ball.mesh = sphere
-	var material := ToonMaterial.create(Player.DUNG_COLOR)
+	# 本編と同じく、フン球もフンコロガシの全身もプレイヤー色で塗る。
+	var player_color := Player.color_for(player_id)
+	var material := ToonMaterial.create(player_color)
 	ball.material_override = material
 	ball.position.y = radius
 	presentation.add_child(ball)
 
-	# 全身をプレイヤー色で塗る。
-	var beetle := BeetleModel.create(presentation, Player.color_for(player_id))
+	var beetle := BeetleModel.create(presentation, player_color)
 	beetle.root.position.z = -beetle.distance_from_ball(radius)
 
 	var combined_bounds := BeetleModel.mesh_bounds(beetle.meshes, presentation).merge(ball.transform * ball.get_aabb())
