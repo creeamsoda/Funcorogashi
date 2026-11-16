@@ -9,6 +9,7 @@ extends Node3D
 ##  visual   : 効果中だけ渦巻き/上昇線が出る
 ##  no_pull  : ブラックホールは特殊フンを引き寄せない
 ##  source   : 特殊フンはオランウータンの投げたフンからだけ出る(鳥・ラプトルのドロップは通常フン)
+##  wander   : プレイヤーがいなくても加速フンは止まらず(IDLE・BRAKING にならず)向きを変えながら動き回り、残像を出す。ブラックホールフンは止まったまま
 ##  cap      : 盤面上の特殊フンが上限(special_max_on_board)に達していれば、確率100%でも通常フンになる
 
 class Dummy extends Player:
@@ -41,6 +42,7 @@ func _ready() -> void:
 		"no_pull": await _test_no_pull(),
 		"source": await _test_source(),
 		"cap": await _test_cap(),
+		"wander": await _test_wander(),
 	}
 	var ok := true
 	for key in results:
@@ -260,3 +262,29 @@ func _cleanup(nodes: Array) -> void:
 func _frames(n: int) -> void:
 	for _i in n:
 		await get_tree().physics_frame
+
+
+func _test_wander() -> bool:
+	var sp := _pickup(Vector3(0, 0, 0), DungPickup.Kind.SPEED)
+	var bh := _pickup(Vector3(0, 0, 6), DungPickup.Kind.BLACKHOLE)
+	var bh_start := bh.global_position
+	var never_stopped := true
+	var turns := 0
+	var max_ghosts := 0
+	var last_heading := sp._heading
+	var t := 0.0
+	await _frames(1)
+	while t < 3.0:
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
+		if t > 0.1:
+			never_stopped = never_stopped and sp._state != DungPickup.FleeState.IDLE and sp._state != DungPickup.FleeState.BRAKING
+		if sp._heading.angle_to(last_heading) > deg_to_rad(10.0):
+			turns += 1
+		last_heading = sp._heading
+		max_ghosts = maxi(max_ghosts, sp.get_node("Afterimage").get_child_count())
+	var bh_still := bh.global_position.distance_to(bh_start) < 0.05 and bh._state == DungPickup.FleeState.IDLE
+	_report.append("  [wander] never_stopped=%s turns=%d ghosts=%d blackhole_still=%s" % [never_stopped, turns, max_ghosts, bh_still])
+	_cleanup([sp, bh])
+	await _frames(2)
+	return never_stopped and turns >= 2 and max_ghosts > 0 and bh_still

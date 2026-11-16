@@ -16,6 +16,9 @@ extends CharacterBody3D
 ## 特殊フン(kind が NORMAL 以外): 色で見分ける。サイズに関係なく必ず逃げ、速度・驚き時間は専用の値。
 ##   逃げる向きは「範囲内の全プレイヤーから離れる」と「先が開けている(壁から遠い)」を合わせて評価した一番よい向き。
 ##   回収したプレイヤーに効果(ブラックホール/高速)を与える。
+## 加速フン(SPEED)は止まらずにうろつく: IDLE・BRAKING に入らず、毎回ランダムな距離
+##   (special_wander_distance_min〜max)を進むたびに驚き、近くにプレイヤーがいなければ前方に壁のない
+##   ランダムな向きへ、いれば逃げる向きへ、同じ速さで進み直す。壁に驚いた後も同様。動いている間は残像を出す。
 ## ブラックホール効果中のプレイヤーの範囲内にいる通常フンは、逃げずにそのプレイヤーへ引き寄せられる(特殊フンは寄らない)。
 
 signal collected(size: float)
@@ -54,6 +57,7 @@ var collectible_at: float = 0.0  ## この秒(get_ticks/1000)以降 owner 本人
 var _mesh_instance: MeshInstance3D
 var _flee_fx: EffectPlayer
 var _blackhole_fx: EffectPlayer  ## ブラックホールフンだけ持つ
+var _afterimage: AfterimageTrail ## 加速フンだけ持つ
 var _static_visual := false      ## 今の見た目が動かないフン用の球か
 var _shape: SphereShape3D        ## 回収判定(半径+回収余裕)
 var _body_shape: SphereShape3D   ## 壁との衝突判定
@@ -70,6 +74,7 @@ var _speed := 0.0                ## 前進速度(m/s)
 var _wall_surprise := false      ## 今の驚きが壁によるものか(驚き時間と、驚き後の向きの決め方が変わる)
 var _wall_normal := Vector3.ZERO ## 驚いた壁の面の向き(壁から外向き)。驚き後はこの壁へ近づく向きを選ばない
 var _shake_seed := 0.0
+var _leg_left := 0.0             ## 加速フン: 次に驚いて向きを変えるまでに進む残りの距離(m)
 
 
 ## ファクトリ。GameManager.spawn_pickup() から使う。
@@ -149,6 +154,10 @@ func _physics_process(delta: float) -> void:
 		_speed = clampf(get_real_velocity().dot(_heading), 0.0, _speed)
 		if Stage.has_elevation():
 			_follow_ground(before)
+		if _wanders():
+			var moved := global_position - before
+			moved.y = 0.0
+			_leg_left -= moved.length()
 	if not Stage.has_elevation():
 		global_position.y = 0.0
 	_update_visual()
@@ -271,6 +280,8 @@ func _update_flee(delta: float) -> void:
 			_speed = 0.0
 			if _nearest_threat_distance() <= b.flee_idle_alert_radius:
 				_surprise(false)
+			elif _wanders():
+				_start_running() # 止まらない(生成直後にすぐ動き出す)
 		FleeState.SURPRISED:
 			_speed = 0.0
 			if _state_t >= _surprise_duration():
@@ -287,6 +298,13 @@ func _update_flee(delta: float) -> void:
 				n.y = 0.0
 				_wall_normal = n.normalized() if n.length() > 0.001 else -_heading
 				_surprise(true)
+				return
+			if _wanders():
+				if _speed <= 0.01: # 壁に引っかかって進めない
+					_wall_normal = -_heading
+					_surprise(true)
+				elif _leg_left <= 0.0:
+					_surprise(false) # 決めた距離を進んだら驚いて向きを変える
 				return
 			if _state == FleeState.RUNNING and _state_t >= b.flee_run_time:
 				_enter_state(FleeState.BRAKING)
@@ -334,6 +352,8 @@ func _escape_direction() -> Vector3:
 ## 驚き中は、その時点の逃げる向きへ向き続ける(プレイヤーが回り込めば向きも追う)。
 ## 壁の驚きで近くにプレイヤーがいない間は、今の向き(壁の方)のまま。
 func _face_escape_direction() -> void:
+	if _wanders() and not _threat_in_wander_range():
+		return # うろつきの驚きは今の向きのまま(次の向きは驚き終わりに決める)
 	if _wall_surprise and not _player_near_wall_escape():
 		return
 	var dir := _escape_direction()
@@ -349,6 +369,9 @@ func _player_near_wall_escape() -> bool:
 ## 驚き終わった瞬間の逃げる向きへ、速度②で進み出す。逃げ道がなければ驚き続ける(追い詰められた状態)。
 ## 壁の驚きで近くにプレイヤーがいなければ、逃げずに壁の前で止まる。
 func _start_running() -> void:
+	if _wanders():
+		_start_wander_leg()
+		return
 	if _wall_surprise and not _player_near_wall_escape():
 		_wall_surprise = false
 		_enter_state(FleeState.IDLE)
@@ -362,6 +385,49 @@ func _start_running() -> void:
 	var base_speed: float = Config.balance.special_flee_speed if is_special() else Config.balance.flee_speed
 	_speed = base_speed / (1.0 + maxf(Config.balance.flee_speed_size_penalty, 0.0) * size)
 	_enter_state(FleeState.RUNNING)
+
+
+## --- 加速フンのうろつき ---
+
+## 止まらずにうろつくフンか(加速フン)。
+func _wanders() -> bool:
+	return kind == Kind.SPEED
+
+
+## 逃げる向きを決める対象のプレイヤー(special_flee_threat_radius 以内)がいるか。
+func _threat_in_wander_range() -> bool:
+	return _nearest_threat_distance() <= Config.balance.special_flee_threat_radius
+
+
+## 次の区間を進み出す。近くにプレイヤーがいれば逃げる向き、いなければ前方に壁のないランダムな向き。
+## 向きがなければ(全方向ふさがり)驚き続ける。
+func _start_wander_leg() -> void:
+	var b := Config.balance
+	var dir := _escape_direction() if _threat_in_wander_range() else _random_free_direction()
+	if dir.is_zero_approx():
+		_surprise(true)
+		return
+	_heading = dir
+	_wall_surprise = false
+	_speed = b.special_flee_speed / (1.0 + maxf(b.flee_speed_size_penalty, 0.0) * size)
+	var lo := maxf(b.special_wander_distance_min, 0.1)
+	_leg_left = randf_range(lo, maxf(b.special_wander_distance_max, lo))
+	_enter_state(FleeState.RUNNING)
+
+
+## 前方③以内に壁がなく、驚いた壁へ近づかないランダムな向き。全周 flee_wall_search_step 度刻みの候補から選ぶ。なければ ZERO。
+func _random_free_direction() -> Vector3:
+	var step := clampf(Config.balance.flee_wall_search_step, 1.0, 90.0)
+	var count := maxi(int(round(360.0 / step)), 4)
+	var offset := randf() * TAU
+	var free: Array[Vector3] = []
+	for i in count:
+		var cand := Vector3.BACK.rotated(Vector3.UP, offset + TAU * i / count)
+		if _wall_surprise and cand.dot(_wall_normal) < -0.01:
+			continue
+		if not _blocked_ahead(cand):
+			free.append(cand)
+	return free.pick_random() if not free.is_empty() else Vector3.ZERO
 
 
 ## base から左右交互に flee_wall_search_step 度ずつ広げ、最初に見つかった逃げられる向き。なければ ZERO。
@@ -598,6 +664,13 @@ func _build_visual() -> void:
 		add_child(_blackhole_fx)
 		_blackhole_fx.fit_radius(r)
 		_blackhole_fx.set_active(true)
+	if _wanders():
+		_afterimage = AfterimageTrail.new()
+		_afterimage.name = "Afterimage"
+		var targets: Array[MeshInstance3D] = [_mesh_instance]
+		_afterimage.setup(targets, KIND_COLORS[kind])
+		add_child(_afterimage)
+		_afterimage.set_active(true) # 止まっている間は AfterimageTrail 側で出さない
 
 
 ## 動かないフンは球(原点を底にするため _update_visual で半径ぶん持ち上げる)、逃げるフンはうんちモデル。
