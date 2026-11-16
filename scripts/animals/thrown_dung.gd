@@ -32,7 +32,7 @@ func _ready() -> void:
 	m.radius = 0.3
 	m.height = 0.6
 	mi.mesh = m
-	var mat := ToonMaterial.create(Color(0.40, 0.26, 0.15))
+	var mat := ToonMaterial.create(Player.DUNG_COLOR)
 	mi.material_override = mat
 	add_child(mi)
 
@@ -97,7 +97,7 @@ func _create_landing_preview() -> void:
 	_landing_preview.mesh = mesh
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.40, 0.26, 0.15, 0.25)
+	mat.albedo_color = Color(Player.DUNG_COLOR, 0.25)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_landing_preview.material_override = mat
 	_landing_preview.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

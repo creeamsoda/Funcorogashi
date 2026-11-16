@@ -1,0 +1,14 @@
+{
+  "vertices": 390,
+  "triangles": 776,
+  "path_steps": 32,
+  "radial_segments": 12,
+  "dimensions": {
+    "x": 0.9477,
+    "y": 1.0285,
+    "z": 0.9089
+  },
+  "materials": [
+    "Poop_Toon_Base"
+  ]
+}

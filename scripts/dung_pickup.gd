@@ -10,7 +10,7 @@ extends CharacterBody3D
 ##     「前方③以内に壁がない」一番近い向きへ逃げる(全方向ふさがりなら驚き続ける)。いなければ壁の前で止まる(IDLE)
 ##   → 驚かずに④秒進んだら BRAKING(減速度⑤)→ 止まったら IDLE
 ## 壁・フェンスとだけ衝突し、プレイヤーやフン同士とはすり抜ける。
-## 見た目は細長い三角形で、頂点側が進行方向。判定(壁・回収・距離)は向きに依らない円のまま。
+## 見た目はうんちモデルで、進行方向へ向きを回す。判定(壁・回収・距離)は向きに依らない円のまま。
 ## flee_static_max_size 以下の小さいフンは逃げず(動かない)、見た目も球(仮。後で差し替え予定)。
 ## ノード原点は地面(y=0)。判定は半径ぶん上に置く。
 ## 特殊フン(kind が NORMAL 以外): 色で見分ける。サイズに関係なく必ず逃げ、速度・驚き時間は専用の値。
@@ -30,15 +30,20 @@ const CLIFF_PROBE_STEP := 0.25
 const SURPRISE_JUMP_HEIGHT := 0.45
 const SHAKE_AMPLITUDE := 0.08
 const SHAKE_FREQUENCY := 40.0
-## 三角形の見た目(半径に対する倍率)。
-const SHAPE_LENGTH := 2.4
-const SHAPE_WIDTH := 1.4
-const SHAPE_THICK := 0.9
+## 逃げるフンのうんちモデルの幅(半径に対する倍率)。以前の三角柱と同じぐらいの見た目の大きさ。
+const MODEL_WIDTH := 2.0
+## うんちモデルの天地の軸を進行方向と逆側へ傾ける角度(度)。
+const MODEL_TILT_DEG := 15.0
+
+## 驚き中・逃げ中に出す土煙(見た目はシーン側でインスペクタから調整する)。
+const FLEE_FX: PackedScene = preload("res://resources/effects/flee_dust.tscn")
+## フィールド上のブラックホールフンが出し続ける渦(プレイヤーのブラックホール効果とは別シーンで個別に調整する)。
+const BLACKHOLE_FX: PackedScene = preload("res://resources/effects/blackhole_dung_swirl.tscn")
 
 enum FleeState { IDLE, SURPRISED, RUNNING, BRAKING }
 enum Kind { NORMAL, BLACKHOLE, SPEED }
 const SPECIAL_GROUP := "special_dung"
-const KIND_COLORS := [Color(0.38, 0.24, 0.14), Color(0.05, 0.08, 0.32), Color(0.45, 0.85, 1.0)]
+const KIND_COLORS := [Player.DUNG_COLOR, Color(0.05, 0.08, 0.32), Color(0.45, 0.85, 1.0)]
 const STATE_COLORS := [Color.WHITE, Color(1.0, 0.9, 0.2), Color(0.2, 1.0, 0.3), Color(0.2, 0.9, 1.0)]
 
 var size: float = 0.5
@@ -47,6 +52,8 @@ var kind: Kind = Kind.NORMAL     ## add_child 前に設定する
 var collectible_at: float = 0.0  ## この秒(get_ticks/1000)以降 owner 本人も回収可
 
 var _mesh_instance: MeshInstance3D
+var _flee_fx: EffectPlayer
+var _blackhole_fx: EffectPlayer  ## ブラックホールフンだけ持つ
 var _static_visual := false      ## 今の見た目が動かないフン用の球か
 var _shape: SphereShape3D        ## 回収判定(半径+回収余裕)
 var _body_shape: SphereShape3D   ## 壁との衝突判定
@@ -497,20 +504,35 @@ func _nearest_threat_distance() -> float:
 	return _edge_distance(p) if p != null else INF
 
 
-## 向きに合わせて三角形を回す。驚き中は震えながら1回跳ねる。
+## 向きに合わせてモデルを回す。驚き中は震えながら1回跳ねる。
 func _update_visual() -> void:
+	_update_flee_fx()
 	if _static_visual:
-		_mesh_instance.rotation.y = 0.0
+		_mesh_instance.rotation = Vector3.ZERO
 		_mesh_instance.position = Vector3(0, _radius(), 0)
 		return
-	_mesh_instance.rotation.y = atan2(_heading.x, _heading.z)
+	# 向きを回したうえで、上側が後ろへ来るよう傾ける(後ろ側が地面に沈まないよう、その分持ち上げる)。
+	var tilt := deg_to_rad(MODEL_TILT_DEG)
+	_mesh_instance.rotation = Vector3(-tilt, atan2(_heading.x, _heading.z), 0.0)
+	var lift := _radius() * MODEL_WIDTH * 0.5 * sin(tilt)
 	if _state != FleeState.SURPRISED:
-		_mesh_instance.position = Vector3.ZERO
+		_mesh_instance.position = Vector3(0, lift, 0)
 		return
 	var t := clampf(_state_t / maxf(_surprise_duration(), 0.01), 0.0, 1.0)
 	var jump := sin(t * PI) * (SURPRISE_JUMP_HEIGHT + _radius() * 0.3)
 	var phase := (_state_t + _shake_seed) * SHAKE_FREQUENCY
-	_mesh_instance.position = Vector3(sin(phase) * SHAKE_AMPLITUDE, jump, cos(phase * 1.3) * SHAKE_AMPLITUDE)
+	_mesh_instance.position = Vector3(sin(phase) * SHAKE_AMPLITUDE, lift + jump, cos(phase * 1.3) * SHAKE_AMPLITUDE)
+
+
+## 驚き中・逃げ中(減速中も含む)だけ、進む向きの後ろへ土煙を出す。止まると出ている分は寿命まで残る。
+func _update_flee_fx() -> void:
+	if _flee_fx == null:
+		return
+	var active := not _static_visual and not _collected and Config.balance.flee_enabled 		and _state in [FleeState.SURPRISED, FleeState.RUNNING, FleeState.BRAKING]
+	if active:
+		_flee_fx.fit_radius(_radius())
+		_flee_fx.set_direction(_heading)
+	_flee_fx.set_active(active)
 
 
 ## F2 デバッグ表示: 回収範囲(黄)・止まっている時の驚き範囲⓪(赤)・進行中の驚き範囲③(赤、前方は線)・
@@ -565,19 +587,30 @@ func _build_visual() -> void:
 	var mat := ToonMaterial.create(KIND_COLORS[kind])
 	_mesh_instance.material_override = mat
 	add_child(_mesh_instance)
+	_flee_fx = FLEE_FX.instantiate() as EffectPlayer
+	_flee_fx.name = "FleeDust"
+	add_child(_flee_fx)
+	if kind == Kind.BLACKHOLE:
+		# フンの中心(地面から半径ぶん上)に付けて出し続ける。驚きの跳ねには付いていかない。
+		_blackhole_fx = BLACKHOLE_FX.instantiate() as EffectPlayer
+		_blackhole_fx.name = "BlackholeDungSwirl"
+		_blackhole_fx.position.y = r
+		add_child(_blackhole_fx)
+		_blackhole_fx.fit_radius(r)
+		_blackhole_fx.set_active(true)
 
 
-## 動かないフンは球(原点を底にするため _update_visual で半径ぶん持ち上げる)、逃げるフンは三角形。
+## 動かないフンは球(原点を底にするため _update_visual で半径ぶん持ち上げる)、逃げるフンはうんちモデル。
 func _build_mesh(r: float) -> Mesh:
 	if not _static_visual:
-		return _build_triangle_mesh(r)
+		return DungModel.mesh_with_width(r * MODEL_WIDTH)
 	var sphere := SphereMesh.new()
 	sphere.radius = r
 	sphere.height = r * 2.0
 	return sphere
 
 
-## 調整パネルでしきい値が変わった時に、見た目を球/三角形で切り替える。
+## 調整パネルでしきい値が変わった時に、見た目を球/うんちモデルで切り替える。
 func _sync_static_visual() -> void:
 	if _static_visual == is_static():
 		return
@@ -587,31 +620,6 @@ func _sync_static_visual() -> void:
 	_state_t = 0.0
 	_speed = 0.0
 	_update_visual()
-
-
-## 上から見て細長い二等辺三角形の柱。頂点が +Z(前)。重心付近を原点にして回転が自然に見えるようにする。
-func _build_triangle_mesh(r: float) -> ArrayMesh:
-	var half_len := r * SHAPE_LENGTH * 0.5
-	var half_w := r * SHAPE_WIDTH * 0.5
-	var up := Vector3(0, r * SHAPE_THICK, 0)
-	var tip := Vector3(0, 0, half_len * 1.2)
-	var left := Vector3(-half_w, 0, -half_len * 0.8)
-	var right := Vector3(half_w, 0, -half_len * 0.8)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Godot の表面は外から見て時計回り
-	var faces := [
-		[tip + up, left + up, right + up],                         # 上面
-		[tip, right, left],                                        # 底面
-		[tip, left + up, tip + up], [tip, left, left + up],        # 左側面
-		[right, tip + up, right + up], [right, tip, tip + up],     # 右側面
-		[left, right + up, left + up], [left, right, right + up],  # 後面
-	]
-	for face in faces:
-		for v in face:
-			st.add_vertex(v)
-	st.generate_normals()
-	return st.commit()
 
 
 ## 本人のドロップで、まだ回収できない(スタン明け前)か。
