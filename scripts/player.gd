@@ -831,7 +831,8 @@ func _update_speed_lines() -> void:
 		_speed_lines.fit_radius(r)
 		_speed_lines.set_direction(_dash_dir)
 	_speed_lines.set_active(active)
-	var blackhole := is_blackhole_active()
+	# 止めた後も粒が寿命まで残るので、残りが寿命の半分を切ったら先に止める(効果が切れる頃に消えきる)。
+	var blackhole := is_blackhole_active() and _blackhole_t > _blackhole_swirl.max_lifetime() * 0.5
 	if blackhole:
 		_blackhole_swirl.fit_radius(r)
 	_blackhole_swirl.set_active(blackhole)

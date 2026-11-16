@@ -97,6 +97,14 @@ func is_active() -> bool:
 	return false
 
 
+## 直接出す粒の寿命(lifetime)の最長(秒)。止めてから出ている粒が消えきるまでの目安。
+func max_lifetime() -> float:
+	var longest := 0.0
+	for p in _particles:
+		longest = maxf(longest, p.lifetime)
+	return longest
+
+
 ## 前(ローカル -Z)を dir の水平成分へ向ける。
 func set_direction(dir: Vector3) -> void:
 	var flat := Vector3(dir.x, 0.0, dir.z)
@@ -154,10 +162,7 @@ func _capture_base() -> void:
 ## 出し続けるエフェクトを止め、残った粒が消えてから自分を消す。
 func stop_and_free() -> void:
 	set_active(false)
-	var longest := 0.0
-	for p in _particles:
-		longest = maxf(longest, p.lifetime)
-	get_tree().create_timer(longest + _sub_lifetime()).timeout.connect(queue_free)
+	get_tree().create_timer(max_lifetime() + _sub_lifetime()).timeout.connect(queue_free)
 
 
 ## サブエミッターの粒が消えるまでの最長時間(なければ 0)。

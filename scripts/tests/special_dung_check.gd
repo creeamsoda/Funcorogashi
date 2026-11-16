@@ -163,10 +163,14 @@ func _test_visual() -> bool:
 	p.apply_special_dung(DungPickup.Kind.SPEED)
 	await _frames(3)
 	var on := swirl.is_active() and rise.emitting
-	_report.append("  [visual] off_before=%s on_during=%s" % [off, on])
+	# 効果の残りが渦の寿命の半分を切ったら、効果中でも渦は先に止まる
+	p._blackhole_t = swirl.max_lifetime() * 0.5 - 0.1
+	await _frames(2)
+	var early_off := p.is_blackhole_active() and not swirl.is_active()
+	_report.append("  [visual] off_before=%s on_during=%s early_off=%s" % [off, on, early_off])
 	_cleanup([p])
 	await _frames(2)
-	return off and on
+	return off and on and early_off
 
 
 func _test_no_pull() -> bool:
