@@ -27,9 +27,8 @@ const STUN_COLOR := Color(0.4, 0.4, 0.4)
 ## 突進の加速線・ブラックホールの渦(見た目はシーン側でインスペクタから調整する)。
 const DASH_LINES_FX: PackedScene = preload("res://resources/effects/dash_lines.tscn")
 const BLACKHOLE_FX: PackedScene = preload("res://resources/effects/blackhole_swirl.tscn")
-## 溜め中はゆっくり、突進無敵中は素早く点滅する。突進加速中は点滅しない。
+## 溜め中はゆっくり点滅する。突進中(加速・無敵とも)は点滅しない。
 const CHARGE_FLASH_INTERVAL := 0.25
-const INVINCIBLE_FLASH_INTERVAL := 0.05
 
 const PLAYER_COLORS := [
 	Color(0.90, 0.30, 0.25), # P1 赤
@@ -850,12 +849,10 @@ func _update_dash_arrow() -> void:
 		_dash_arrow.visible = false
 
 
-## 溜め中=ゆっくり点滅 / 突進加速中=点滅なし / 突進無敵中=素早く点滅。
+## 溜め中だけゆっくり点滅する(突進加速中・突進無敵中は点滅しない)。
 func _flash_on() -> bool:
 	if state == State.DASH_CHARGING:
 		return int(_charge_t / CHARGE_FLASH_INTERVAL) % 2 == 0
-	if is_dash_invincible():
-		return int((_dash_t - _dash_accel_time) / INVINCIBLE_FLASH_INTERVAL) % 2 == 0
 	return false
 
 

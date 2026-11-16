@@ -504,7 +504,7 @@ func _test_dash_phases() -> bool:
 	b.dash_accel_size_slope = old[0]
 	b.dash_accel_size_min_ratio = old[1]
 
-	# 点滅: 溜め=ゆっくり / 加速=なし / 無敵=素早く
+	# 点滅: 溜め=ゆっくり / 加速=なし / 無敵=なし
 	p._end_dash()
 	p._start_dash()
 	p._charge_t = Player.CHARGE_FLASH_INTERVAL * 0.5
@@ -515,12 +515,11 @@ func _test_dash_phases() -> bool:
 	p._dash_accel_time = 0.2
 	p._dash_t = 0.1
 	var accel_none := not p._flash_on()
-	p._dash_t = 0.2 + Player.INVINCIBLE_FLASH_INTERVAL * 0.5
-	var inv_on := p._flash_on()
-	p._dash_t = 0.2 + Player.INVINCIBLE_FLASH_INTERVAL * 1.5
-	var inv_off := not p._flash_on()
-	var flash_ok := charge_on and charge_off and accel_none and inv_on and inv_off \
-		and Player.INVINCIBLE_FLASH_INTERVAL < Player.CHARGE_FLASH_INTERVAL
+	var inv_none := true
+	for t in [0.21, 0.23, 0.26, 0.3]:
+		p._dash_t = t
+		inv_none = inv_none and not p._flash_on()
+	var flash_ok := charge_on and charge_off and accel_none and inv_none
 	_free([p])
 	await _frames(2)
 
