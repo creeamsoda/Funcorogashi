@@ -154,14 +154,13 @@ func _test_wall() -> bool:
 func _test_visual() -> bool:
 	var p := _player(0, Vector3(0, 0, 8))
 	await _frames(2)
-	var swirl := p.get_node("BlackholeSwirl") as BlackholeSwirl
+	var swirl := p.get_node("BlackholeSwirl") as EffectPlayer
 	var rise := p.get_node("SpeedBoostLines") as DashSpeedLines
-	var off := not (swirl.get_child(0) as GPUParticles3D).emitting and not rise.emitting
+	var off := not swirl.is_active() and not rise.emitting
 	p.apply_special_dung(DungPickup.Kind.BLACKHOLE)
 	p.apply_special_dung(DungPickup.Kind.SPEED)
-	var rot0 := swirl.rotation.y
 	await _frames(3)
-	var on := (swirl.get_child(0) as GPUParticles3D).emitting and rise.emitting and not is_equal_approx(rot0, swirl.rotation.y)
+	var on := swirl.is_active() and rise.emitting
 	_report.append("  [visual] off_before=%s on_during=%s" % [off, on])
 	_cleanup([p])
 	await _frames(2)

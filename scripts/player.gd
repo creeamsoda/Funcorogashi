@@ -24,6 +24,9 @@ enum State { ROLLING, DASH_CHARGING, DASHING, STUNNED }
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
 const STUN_COLOR := Color(0.4, 0.4, 0.4)
+## 突進の加速線・ブラックホールの渦(見た目はシーン側でインスペクタから調整する)。
+const DASH_LINES_FX: PackedScene = preload("res://resources/effects/dash_lines.tscn")
+const BLACKHOLE_FX: PackedScene = preload("res://resources/effects/blackhole_swirl.tscn")
 ## 溜め中はゆっくり、突進無敵中は素早く点滅する。突進加速中は点滅しない。
 const CHARGE_FLASH_INTERVAL := 0.25
 const INVINCIBLE_FLASH_INTERVAL := 0.05
@@ -96,8 +99,8 @@ var _ball_shape: SphereShape3D
 var _beetle: BeetleModel
 var _beetle_base_colors: Array[Color] = []
 var _dash_arrow: DashArrow
-var _speed_lines: DashSpeedLines
-var _blackhole_swirl: BlackholeSwirl
+var _speed_lines: EffectPlayer
+var _blackhole_swirl: EffectPlayer
 var _speed_boost_lines: DashSpeedLines
 var _afterimage: AfterimageTrail
 var _crown: LeaderCrown
@@ -767,9 +770,11 @@ func _build_visual() -> void:
 		_beetle_base_colors.append(mat.albedo_color)
 	_dash_arrow = DashArrow.new(col)
 	add_child(_dash_arrow)
-	_speed_lines = DashSpeedLines.new()
+	_speed_lines = DASH_LINES_FX.instantiate() as EffectPlayer
+	_speed_lines.name = "DashLines"
 	add_child(_speed_lines)
-	_blackhole_swirl = BlackholeSwirl.new()
+	_blackhole_swirl = BLACKHOLE_FX.instantiate() as EffectPlayer
+	_blackhole_swirl.name = "BlackholeSwirl"
 	add_child(_blackhole_swirl)
 	_speed_boost_lines = DashSpeedLines.new()
 	_speed_boost_lines.name = "SpeedBoostLines"
@@ -822,8 +827,15 @@ func _update_speed_lines() -> void:
 	if _speed_lines == null:
 		return
 	var active := gameplay_active and is_dash_invincible() and _dash_t < _dash_duration
-	_speed_lines.update_emitter(active, _dash_dir, global_position, _radius())
-	_blackhole_swirl.update_swirl(is_blackhole_active(), _radius())
+	var r := _radius()
+	if active:
+		_speed_lines.fit_radius(r)
+		_speed_lines.set_direction(_dash_dir)
+	_speed_lines.set_active(active)
+	var blackhole := is_blackhole_active()
+	if blackhole:
+		_blackhole_swirl.fit_radius(r)
+	_blackhole_swirl.set_active(blackhole)
 	_speed_boost_lines.update_rising(is_speed_boost_active(), _radius())
 	_afterimage.set_active(is_speed_boost_active())
 

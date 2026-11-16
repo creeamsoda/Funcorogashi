@@ -6,6 +6,7 @@ shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
 uniform bool use_texture = false;
+uniform bool flip_v = false; // 上下反転(濃い先端と薄い尾を入れ替える)
 uniform sampler2D streak_tex : source_color, hint_default_white;
 uniform float core_width : hint_range(0.01, 1.0) = 0.45; // 幅方向の芯の太さ(小さいほど鋭い)
 uniform float head_length : hint_range(0.0, 0.5) = 0.06; // 先端の立ち上がり
@@ -13,15 +14,16 @@ uniform float tail_power : hint_range(0.1, 4.0) = 1.6;   // 尾のフェード�
 uniform float intensity : hint_range(0.0, 4.0) = 1.4;
 
 void fragment() {
+	vec2 uv = flip_v ? vec2(UV.x, 1.0 - UV.y) : UV;
 	float a;
 	if (use_texture) {
-		vec4 t = texture(streak_tex, UV);
+		vec4 t = texture(streak_tex, uv);
 		a = t.a * t.r;
 	} else {
-		float across = 1.0 - abs(UV.x * 2.0 - 1.0);
+		float across = 1.0 - abs(uv.x * 2.0 - 1.0);
 		float width = smoothstep(0.0, core_width, across);
-		float head = smoothstep(0.0, max(head_length, 0.001), UV.y);
-		float tail = pow(1.0 - UV.y, tail_power);
+		float head = smoothstep(0.0, max(head_length, 0.001), uv.y);
+		float tail = pow(1.0 - uv.y, tail_power);
 		a = width * head * tail;
 	}
 	ALBEDO = COLOR.rgb * intensity;

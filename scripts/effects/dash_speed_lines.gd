@@ -1,13 +1,10 @@
 class_name DashSpeedLines
 extends GPUParticles3D
-## 突進中の加速線。プレイヤー前方の箱から細長い線を出し、突進と逆向き(後方)へ飛ばす。
-## 線は地面と平行な板(PlaneMesh。長辺 = ローカル Z)で、ワールド座標に残るので
-## プレイヤーが進むほど後ろへ流れて見える。高さをばらけさせて立体感を出す。
+## 高速効果中の上昇線(球の下から上へ流す細長い線)。
+## 突進の加速線とブラックホールの渦は resources/effects/ のエフェクトシーン(EffectPlayer)に移した。
 ## 見た目は speed_line.gdshader。描いた PNG に差し替えるときは line_texture を設定する。
 
 const SHADER: Shader = preload("res://resources/shaders/speed_line.gdshader")
-## 通常合成版(色をそのまま出す。加速板の風用)。
-const SHADER_MIX: Shader = preload("res://resources/shaders/speed_line_mix.gdshader")
 
 const LINE_WIDTH := 0.10
 const LINE_LENGTH := 1.8
@@ -17,10 +14,6 @@ const SPEED_MIN := 6.0
 const SPEED_MAX := 11.0
 ## 高速効果の線の色(水色)。
 const RISING_COLOR := Color(0.55, 0.9, 1.0)
-## 渦の線の寿命(突進より長く、回り込む弧が見えるように)。
-const SWIRL_LIFETIME := 0.45
-## setup_area(加速板の風)の線の太さ倍率。通常合成なので細いと見えにくい。
-const AREA_LINE_WIDTH_SCALE := 2.5
 
 ## 描き下ろし素材(白・縦長・上端が先端)。null なら手続き生成の仮の線。
 @export var line_texture: Texture2D:
@@ -89,26 +82,6 @@ func set_tint(color: Color) -> void:
 	_process_mat.color_ramp = ramp
 
 
-## 固定の範囲から常に流す(加速板の風)。center = 範囲の中心、dir = 線が流れる向き、extents = 範囲の半分の大きさ(ワールド軸)。
-## 線は範囲の中から出て dir へ流れる。範囲は dir に合わせて回すので extents の x/z は向きに応じて入れ替える。
-func setup_area(center: Vector3, dir: Vector3, extents: Vector3, color: Color) -> void:
-	var flat := Vector3(dir.x, 0.0, dir.z).normalized()
-	# 粒子はローカル -Z へ飛ぶので、ローカル -Z が dir を向くよう回す。
-	global_position = center
-	global_rotation = Vector3(0.0, atan2(-flat.x, -flat.z), 0.0)
-	var along_z := absf(flat.z) >= absf(flat.x)
-	if along_z:
-		_process_mat.emission_box_extents = extents
-	else:
-		_process_mat.emission_box_extents = Vector3(extents.z, extents.y, extents.x)
-	amount = int(clampf(extents.x * extents.z * 3.0, 16.0, 64.0))
-	_line_mat.shader = SHADER_MIX
-	var mesh := draw_pass_1 as PlaneMesh
-	mesh.size = Vector2(LINE_WIDTH * AREA_LINE_WIDTH_SCALE, LINE_LENGTH)
-	set_tint(color)
-	emitting = true
-
-
 ## 高速効果の線にする(add_child 前に呼ぶ)。突進の半分の本数を、球の下から上へ流す。
 ## プレイヤーに付いて動くようローカル座標で出す。
 func setup_rising() -> void:
@@ -124,36 +97,5 @@ func update_rising(active: bool, r: float) -> void:
 		global_rotation = Vector3(PI * 0.5, 0.0, 0.0)
 		position = Vector3(0.0, -r * 0.6, 0.0)
 		_process_mat.emission_box_extents = Vector3(r * 1.3, r * 1.0, 0.3)
-	if emitting != active:
-		emitting = active
-
-
-## ブラックホールの渦の腕にする(add_child 前に呼ぶ)。線は腕の向き(ローカル -Z)に沿って寝かせ、
-## 内側(ローカル -X)へ寄りながら進む。親を回せばローカル座標ごと回って渦巻きになる。
-func setup_swirl_arm(count: int, color: Color) -> void:
-	amount = maxi(count, 1)
-	lifetime = SWIRL_LIFETIME
-	local_coords = true
-	_line_mat.shader = SHADER_MIX # 加算だと明るい床で白く飛んで色が薄くなるため通常合成
-	_process_mat.direction = Vector3(-0.5, 0.0, -1.0).normalized()
-	_process_mat.initial_velocity_min = SPEED_MIN * 0.6
-	_process_mat.initial_velocity_max = SPEED_MAX * 0.6
-	set_tint(color)
-
-
-## 渦の腕の出現範囲(ローカル: X = 外向き、Z = 回る向き)。
-func set_swirl_extents(radial: float, height: float) -> void:
-	_process_mat.emission_box_extents = Vector3(radial, height, 0.4)
-
-
-## 毎フレーム呼ぶ。active の間だけ新しい線を出す(止めても出ている線は寿命まで残る)。
-## dir = 突進方向、center = フン球の中心(ワールド)。
-func update_emitter(active: bool, dir: Vector3, center: Vector3, r: float) -> void:
-	var flat := Vector3(dir.x, 0.0, dir.z)
-	if active and not flat.is_zero_approx():
-		flat = flat.normalized()
-		set_radius(r)
-		global_position = center + flat * (r + 0.6)
-		global_rotation = Vector3(0.0, atan2(flat.x, flat.z), 0.0)
 	if emitting != active:
 		emitting = active
