@@ -26,10 +26,10 @@ func _test_dash_and_pickup() -> void:
 	var human := _human(Vector3.ZERO)
 	human.can_collect = false # 散布全量を拾われる前に検証する。
 	var npc := _npc(PackedVector3Array([Vector3(3, 0, 0), Vector3(17, 0, 0)]), 1.0, 20.0)
-	var signals := {"hits": 0, "vibrations": 0}
+	var signals := {"hits": 0, "vibrations": 0, "npc_vibrations": 0}
 	human.dash_hit.connect(func(_a: int, _v: int) -> void: signals.hits += 1)
 	human.vibration_requested.connect(func(_id: int) -> void: signals.vibrations += 1)
-	npc.vibration_requested.connect(func(_id: int) -> void: signals.vibrations += 1)
+	npc.vibration_requested.connect(func(_id: int) -> void: signals.npc_vibrations += 1)
 	_expect(not npc.is_in_group("player") and npc.is_in_group("npc"), "NPC group exclusion")
 	_expect(human.collision_mask == 7 and npc.collision_layer == 4 and npc.collision_mask == 2,
 		"collision layers")
@@ -40,7 +40,8 @@ func _test_dash_and_pickup() -> void:
 	human._start_dash()
 	await get_tree().create_timer(0.65).timeout
 	_expect(signals.hits == 1 and npc.state == Player.State.STUNNED, "dash hits NPC")
-	_expect(signals.vibrations == 0, "NPC hit requests no vibration")
+	_expect(signals.vibrations == 1 and signals.npc_vibrations == 0,
+		"NPC hit vibrates only the human attacker")
 	var detached := 8.0 * clampf(Config.balance.drop_ratio, 0.0, 1.0)
 	_expect(is_equal_approx(npc.size, 8.0 - detached), "NPC loses held dung")
 	var ground_total := 0.0

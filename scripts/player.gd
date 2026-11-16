@@ -527,16 +527,17 @@ func _resolve_dash_contact(victim: Player, col: KinematicCollision3D = null) -> 
 	else:
 		# 命中: 相手だけドロップ+スタン、自分は無傷
 		_play_audio(_audio.hit)
-		_play_impact_vibrations([victim])
+		_play_impact_vibrations([victim], [self])
 		victim.drop_and_stun()
 		dash_hit.emit(player_id, victim.player_id)
 		_end_dash()
 
 
 ## MVP対象の衝撃を、対象プレイヤーのデバイスごとにまとめて振動させる(詳細は PlayerVibration)。
-func _play_impact_vibrations(targets: Array) -> void:
+## targets は被弾・壁スタンの長い振動、light_targets は突進を当てた側の短い振動。
+func _play_impact_vibrations(targets: Array, light_targets: Array = []) -> void:
 	if gameplay_active:
-		PlayerVibration.play_impact(self, targets)
+		PlayerVibration.play_impact(self, targets, light_targets)
 
 
 func _apply_knockback(dir: Vector3) -> void:

@@ -55,7 +55,7 @@ func _test_hit() -> bool:
 	var hit_se_playing: bool = (atk.get_node("HitSE") as AudioStreamPlayer).playing
 	var ok: bool = got["hit"] and vic.size < vic0 and atk.size >= atk0 - 0.0001 \
 		and vic.state == Player.State.STUNNED and _dung.get_child_count() > dc0 \
-		and vibrations["attacker"] == 0 and vibrations["victim"] == 1 and hit_se_playing
+		and vibrations["attacker"] == 1 and vibrations["victim"] == 1 and hit_se_playing
 	print("  [hit] atk ", atk0, "->", atk.size, " vic ", vic0, "->", vic.size,
 		" vic_state=", vic.state, " dashHit=", got["hit"], " vibration=", vibrations,
 		" hit_se=", hit_se_playing)

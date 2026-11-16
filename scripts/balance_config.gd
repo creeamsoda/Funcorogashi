@@ -134,7 +134,8 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export_group("Joy-Con Vibration")
 @export_range(0.0, 1.0, 0.01) var joy_vibration_weak_magnitude: float = 0.25 ## 低周波側の振動強度
 @export_range(0.0, 1.0, 0.01) var joy_vibration_strong_magnitude: float = 0.4 ## 高周波側の振動強度
-@export_range(0.0, 2.0, 0.01) var joy_vibration_duration: float = 0.16       ## 振動時間(秒)
+@export_range(0.0, 2.0, 0.01) var joy_vibration_duration: float = 0.48       ## 被弾ドロップ・壁スタン時の振動時間(秒)
+@export_range(0.0, 2.0, 0.01) var joy_vibration_hit_duration: float = 0.16   ## 突進を当てた側の振動時間(秒)
 
 @export_group("Drop & Pickup")
 @export var drop_ratio: float = 0.5                ## 被弾/自滅時に本体から切り離す割合
