@@ -1,0 +1,268 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+ERROR: Failed to read the root certificate store.
+   at: get_system_ca_certificates (platform/windows/os_windows.cpp:2582)
+{
+	"arms": [
+		{
+			"distal_vertex": [
+				-0.925068974494934,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323453575372696
+		},
+		{
+			"distal_vertex": [
+				0.925060868263245,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323452085256577
+		}
+	],
+	"engine": "4.7.2-stable (official)",
+	"errors": [],
+	"ground": {
+		"all_meshes_above_ground_y_0": true,
+		"mesh_minimum_global_y": {
+			"Abdomen": 0.119999997317791,
+			"Arm_L": 0.0448872447013855,
+			"Arm_R": 0.0448872447013855,
+			"Head": 0.180000007152557,
+			"Leg_Middle_L": 0.0186639130115509,
+			"Leg_Middle_R": 0.0186639130115509,
+			"Leg_Rear_L": 0.0187538266181946,
+			"Leg_Rear_R": 0.0187538266181946,
+			"Thorax": 0.140000000596046,
+			"WingShell": 0.25
+		},
+		"minimum_global_y": 0.0186639130115509,
+		"tolerance": 0.00001
+	},
+	"import_method": "GLTFDocument.append_from_file + generate_scene",
+	"import_ok": true,
+	"limbs": [
+		{
+			"distal_vertex": [
+				-0.925068974494934,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323453575372696
+		},
+		{
+			"distal_vertex": [
+				0.925060868263245,
+				0.0549370050430298,
+				-1.50210118293762
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"found": true,
+			"name": "Arm_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.620000004768372,
+				0.430000007152557,
+				-0.819999992847443
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.323452085256577
+		},
+		{
+			"distal_vertex": [
+				-1.37050974369049,
+				0.0352388024330139,
+				0.863021492958069
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"found": true,
+			"name": "Leg_Middle_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.525871872901917
+		},
+		{
+			"distal_vertex": [
+				1.37049865722656,
+				0.0352388024330139,
+				0.863021492958069
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"found": true,
+			"name": "Leg_Middle_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.699999988079071,
+				0.370000004768372,
+				-0.150000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.525869131088257
+		},
+		{
+			"distal_vertex": [
+				-1.20924687385559,
+				0.0348311960697174,
+				1.31327450275421
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"found": true,
+			"name": "Leg_Rear_L",
+			"neutral_rotation": true,
+			"pivot": [
+				-0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.459108650684357
+		},
+		{
+			"distal_vertex": [
+				1.20923781394959,
+				0.0348311960697174,
+				1.31327450275421
+			],
+			"distal_vertex_below_pivot": true,
+			"distal_vertex_selection": "mesh vertex farthest from its local pivot",
+			"expected_pivot": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"found": true,
+			"name": "Leg_Rear_R",
+			"neutral_rotation": true,
+			"pivot": [
+				0.670000016689301,
+				0.349999994039536,
+				0.400000005960464
+			],
+			"pivot_matches_authored_attachment": true,
+			"pivot_shift": 0.0,
+			"rotates_about_fixed_pivot": true,
+			"rotation_degrees_tested": 25,
+			"sample_movement": 0.459106743335724
+		}
+	],
+	"mesh_count": 10,
+	"passed": true,
+	"source": "resources/models/beetle/beetle.glb",
+	"source_sha256": "b03bb8021f8f07e056ea22a5a64958d2d50dedd79ec372dd24ff98695320a0f5",
+	"totals": {
+		"surfaces": 11,
+		"triangles": 1740,
+		"vertices": 922
+	},
+	"wing": {
+		"image_surface_material": "Wing_Image",
+		"surface_connected_components": 1,
+		"texture_present": true,
+		"texture_size": [
+			1024,
+			1024
+		],
+		"uv_count_matches_vertices": true,
+		"uv_within_0_1": true
+	},
+	"within_1000_vertex_budget": true
+}
