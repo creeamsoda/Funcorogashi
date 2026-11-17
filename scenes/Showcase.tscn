@@ -1,0 +1,61 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/showcase/showcase.gd" id="1_showcase"]
+[ext_resource type="Script" path="res://scripts/showcase/showcase_beetle.gd" id="2_beetle"]
+[ext_resource type="Script" path="res://scripts/showcase/showcase_dung.gd" id="3_dung"]
+
+[node name="Showcase" type="Node3D"]
+script = ExtResource("1_showcase")
+
+[node name="ShowcaseCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.4695, 0.8829, 0, -0.8829, 0.4695, 0, 18, 9.57)
+current = true
+fov = 60.0
+
+[node name="P1_Dash" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -6, 0, 1.5)
+script = ExtResource("2_beetle")
+dung_size = 3.0
+pose = 3
+
+[node name="P2_Blackhole" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 5, 0, -2)
+script = ExtResource("2_beetle")
+player_id = 1
+dung_size = 4.0
+blackhole = true
+
+[node name="P3_SpeedBoost" type="Node3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -3, 0, -5)
+script = ExtResource("2_beetle")
+player_id = 2
+dung_size = 2.0
+speed_boost = true
+
+[node name="P4_Charge" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 4)
+script = ExtResource("2_beetle")
+player_id = 3
+dung_size = 2.5
+pose = 1
+crown = true
+
+[node name="Dung" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, -1)
+script = ExtResource("3_dung")
+
+[node name="Dung2" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 0, -4.5)
+script = ExtResource("3_dung")
+dung_size = 0.6
+
+[node name="BlackholeDung" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0, -3)
+script = ExtResource("3_dung")
+kind = 1
+
+[node name="SpeedDung" type="Node3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 10, 0, 1)
+script = ExtResource("3_dung")
+kind = 2
+fleeing = true

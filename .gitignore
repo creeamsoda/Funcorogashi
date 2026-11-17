@@ -17,3 +17,6 @@ mono_crash.*.json
 .DS_Store
 Thumbs.db
 *.tmp
+
+# 紹介画像シーン(Showcase.tscn)の F12 スクリーンショット
+/screenshots/
