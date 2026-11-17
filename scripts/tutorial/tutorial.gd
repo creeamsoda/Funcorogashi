@@ -21,6 +21,15 @@ const BLACKHOLE_POS := Vector3(-3.6, 0, 0)
 const SPEED_CENTER := Vector3(3.6, 0, 0)
 const SPEED_PATH_HALF := Vector3(1.5, 0, 0.6) ## 8の字の半幅(x, z)
 const SPEED_LOOP_TIME := 2.5     ## 8の字1周の秒数
+## 紹介冒頭のカットイン(黒半透明帯+白字)。右から素早く入り、中央付近をゆっくり通って、また加速して左へ抜ける。
+const CUT_IN_TEXT := "スペシャル・フン"
+const CUT_IN_HEIGHT := 150.0
+const CUT_IN_WIDTH_SCALE := 1.5  ## 帯の長さ(画面幅に対する倍率。文字は帯の中央)
+const CUT_IN_FONT_SIZE := 88
+const CUT_IN_COLOR := Color(0, 0, 0, 0.6)
+const CUT_IN_FAST_TIME := 0.22   ## 画面外→中央手前、中央先→画面外 それぞれの秒数
+const CUT_IN_SLOW_TIME := 1.8    ## 中央付近をゆっくり通る秒数
+const CUT_IN_SLOW_DRIFT := 80.0  ## ゆっくり通る間に動く距離(px)
 const PROGRESS_FONT_SIZE := 72
 const EXPLAIN_FONT_SIZE := 40
 
@@ -191,6 +200,35 @@ func _start_explain() -> void:
 	_add_explained_dung(DungPickup.Kind.BLACKHOLE, BLACKHOLE_POS, SPEED_PATH_HALF, "まわりのフンを吸い込む")
 	_speed_dung = _add_explained_dung(DungPickup.Kind.SPEED, SPEED_CENTER, SPEED_PATH_HALF, "スピードアップ")
 	_explain_ui.add_child(_skip_hint())
+	_play_cut_in()
+
+
+## 「スペシャル・フン」の帯を画面中央の高さに横切らせる(裏ではフンの映像がそのまま動く)。
+func _play_cut_in() -> void:
+	var view := get_viewport().get_visible_rect().size
+	var band := ColorRect.new()
+	band.name = "CutIn"
+	band.color = CUT_IN_COLOR
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var width := view.x * CUT_IN_WIDTH_SCALE
+	var centered_x := (view.x - width) * 0.5 # 帯の中央が画面中央に来る位置
+	band.size = Vector2(width, CUT_IN_HEIGHT)
+	band.position = Vector2(view.x, (view.y - CUT_IN_HEIGHT) * 0.5)
+	_explain_ui.add_child(band)
+	var label := MenuStyle.make_label(CUT_IN_TEXT, CUT_IN_FONT_SIZE, Color.WHITE)
+	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(label)
+	var y := band.position.y
+	var tween := band.create_tween()
+	tween.tween_property(band, "position", Vector2(centered_x + CUT_IN_SLOW_DRIFT * 0.5, y), CUT_IN_FAST_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(band, "position", Vector2(centered_x - CUT_IN_SLOW_DRIFT * 0.5, y), CUT_IN_SLOW_TIME)
+	tween.tween_property(band, "position", Vector2(-width, y), CUT_IN_FAST_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(band.queue_free)
 
 
 ## 動きを止めた(見た目だけの)特殊フンを置き、その定位置の下へ説明文を固定表示する。
