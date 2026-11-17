@@ -41,6 +41,39 @@ static func make_button(text: String, primary: bool = false) -> Button:
 	return button
 
 
+const TITLE_BUTTON_BG := Color("734d2e")
+const TITLE_BUTTON_FOCUS_BG := Color("94653d")
+const TITLE_BUTTON_PRESSED_BG := Color("5a3b22")
+
+
+## タイトル画面のボタン。黒縁取り・#734D2E下地・白文字・角丸。
+## size_scale はボタンの大きさの倍率(1.0 = みんなでバトル！ボタン)。
+static func make_title_button(text: String, size_scale: float = 1.0) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(420, 100) * size_scale
+	button.add_theme_font_override("font", japanese_font())
+	button.add_theme_font_size_override("font_size", roundi(44 * size_scale))
+	for state in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
+		button.add_theme_color_override(state, Color.WHITE)
+	button.add_theme_stylebox_override("normal", _title_button_style(TITLE_BUTTON_BG, size_scale))
+	button.add_theme_stylebox_override("hover", _title_button_style(TITLE_BUTTON_FOCUS_BG, size_scale))
+	button.add_theme_stylebox_override("pressed", _title_button_style(TITLE_BUTTON_PRESSED_BG, size_scale))
+	button.add_theme_stylebox_override("focus", _title_button_style(TITLE_BUTTON_FOCUS_BG, size_scale))
+	return button
+
+
+static func _title_button_style(color: Color, size_scale: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.border_color = Color.BLACK
+	style.set_border_width_all(maxi(2, roundi(6 * size_scale)))
+	style.set_corner_radius_all(roundi(28 * size_scale))
+	style.content_margin_left = 24 * size_scale
+	style.content_margin_right = 24 * size_scale
+	return style
+
+
 static func panel_style(color: Color = PANEL, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = color
