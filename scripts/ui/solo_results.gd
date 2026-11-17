@@ -97,7 +97,7 @@ func show_score(score: float, npc_hits: int, record_result: Dictionary) -> void:
 	_retry_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_retry_button.pressed.connect(_choose.bind(true))
 	buttons.add_child(_retry_button)
-	_menu_button = MenuStyle.make_button("モード選択へ戻る")
+	_menu_button = MenuStyle.make_button("タイトルに戻る")
 	_menu_button.name = "MenuButton"
 	_menu_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_menu_button.pressed.connect(_choose.bind(false))

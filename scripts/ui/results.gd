@@ -106,7 +106,7 @@ func _build_ui() -> void:
 	_retry_button.disabled = true
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_root.add_child(_retry_button)
-	_menu_button = MenuStyle.make_button("モード選択へ")
+	_menu_button = MenuStyle.make_button("タイトルに戻る")
 	_menu_button.name = "MenuButton"
 	_menu_button.size = RETRY_BUTTON_SIZE
 	_menu_button.visible = false

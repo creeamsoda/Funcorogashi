@@ -15,6 +15,7 @@ func _ready() -> void:
 
 func _test_crown() -> bool:
 	var gm: GameManager = (load("res://scenes/Game.tscn") as PackedScene).instantiate()
+	gm.mode = "versus" # 開始演出なし(時計がすぐ進む)
 	add_child(gm)
 	await get_tree().process_frame
 	await get_tree().physics_frame

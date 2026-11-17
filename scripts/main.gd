@@ -1,5 +1,7 @@
 extends Node3D
 ## タイトル画面。タイトル絵を背景に、右下へ「みんなでバトル！」「ひとりで遊ぶ」「クレジット」を置く。
+## 「みんなでバトル！」→ 人数選択ウィンドウ(2人/3人/4人) → チュートリアル選択ウィンドウ(あり/なし)。
+## 人数を選んだ時点から PlayerSlots がコントローラーを先着順でプレイヤーへ割り当て始める。
 
 const TITLE_TEXTURE := preload("res://resources/Title/title.png")
 
@@ -7,8 +9,11 @@ var _launching := false
 var _buttons: Array[Button] = []
 var _credits: Control = null
 var _credits_close: Button = null
+var _count_dialog: Control = null
+var _tutorial_dialog: Control = null
 
 func _ready() -> void:
+	PlayerSlots.end() # タイトルに戻ったら割り当てをやり直す
 	var canvas := CanvasLayer.new()
 	add_child(canvas)
 	var root := Control.new()
@@ -33,7 +38,7 @@ func _ready() -> void:
 	root.add_child(buttons)
 	var versus := _add_title_button(buttons, "みんなでバトル！", 1.0)
 	versus.name = "VersusButton"
-	versus.pressed.connect(_launch.bind("versus"))
+	versus.pressed.connect(_open_count_dialog)
 	var solo := _add_title_button(buttons, "ひとりで遊ぶ", 0.8)
 	solo.name = "SoloButton"
 	solo.pressed.connect(_launch.bind("solo"))
@@ -48,6 +53,10 @@ func _ready() -> void:
 		button.focus_neighbor_right = button.get_path_to(button)
 
 	_build_credits(root)
+	_count_dialog = _build_choice_dialog(root, "何人でバトル？", ["2人", "3人", "4人"], _choose_count)
+	_count_dialog.name = "CountDialog"
+	_tutorial_dialog = _build_choice_dialog(root, "チュートリアル", ["あり", "なし"], _choose_tutorial)
+	_tutorial_dialog.name = "TutorialDialog"
 	versus.grab_focus()
 
 func _add_title_button(parent: VBoxContainer, text: String, size_scale: float) -> Button:
@@ -66,8 +75,11 @@ const PULSE_HALF_PERIOD := 0.45 ## 縮小→拡大(または拡大→縮小)に�
 
 func _start_pulse(button: Button) -> void:
 	_kill_pulse(button)
-	# 右端を基準に拡大し、画面の右へはみ出さないようにする。
-	button.pivot_offset = Vector2(button.size.x, button.size.y * 0.5)
+	# 右端を基準に拡大し、画面の右へはみ出さないようにする(ウィンドウ内のボタンは中心基準)。
+	if button.has_meta("pulse_center"):
+		button.pivot_offset = button.size * 0.5
+	else:
+		button.pivot_offset = Vector2(button.size.x, button.size.y * 0.5)
 	var tween := button.create_tween()
 	tween.tween_property(button, "scale", Vector2.ONE * PULSE_MIN_SCALE, 0.08)
 	var loop := button.create_tween().set_loops()
@@ -150,7 +162,114 @@ func _close_credits() -> void:
 	_credits.visible = false
 	_buttons[2].grab_focus()
 
+## 暗幕+中央のウィンドウに、見出しと横並びの選択ボタンを置く。ボタン i を押すと on_choose(i)。
+func _build_choice_dialog(parent: Control, heading: String, options: Array, on_choose: Callable) -> Control:
+	var dialog := Control.new()
+	dialog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dialog.mouse_filter = Control.MOUSE_FILTER_STOP
+	dialog.visible = false
+	parent.add_child(dialog)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dialog.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dialog.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(640, 0)
+	panel.add_theme_stylebox_override("panel", _window_style())
+	center.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 28)
+	panel.add_child(box)
+	var title := MenuStyle.make_label(heading, 44, MenuStyle.TITLE_BUTTON_BG)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 28)
+	box.add_child(row)
+	var buttons: Array[Button] = []
+	for i in options.size():
+		var button := MenuStyle.make_title_button(options[i], 0.6)
+		button.custom_minimum_size.x = 170
+		button.set_meta("pulse_center", true)
+		button.focus_entered.connect(_start_pulse.bind(button))
+		button.focus_exited.connect(_stop_pulse.bind(button))
+		button.pressed.connect(func() -> void: on_choose.call(i))
+		row.add_child(button)
+		buttons.append(button)
+	# 開いている間は背後のボタンへフォーカスが逃げないよう、左右だけで巡回させる。
+	for i in buttons.size():
+		var button := buttons[i]
+		button.focus_neighbor_left = button.get_path_to(buttons[(i - 1 + buttons.size()) % buttons.size()])
+		button.focus_neighbor_right = button.get_path_to(buttons[(i + 1) % buttons.size()])
+		button.focus_neighbor_top = NodePath(".")
+		button.focus_neighbor_bottom = NodePath(".")
+		button.focus_next = button.focus_neighbor_right
+		button.focus_previous = button.focus_neighbor_left
+	dialog.set_meta("buttons", buttons)
+	return dialog
+
+
+func _window_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("f3e6cf")
+	style.border_color = Color.BLACK
+	style.set_border_width_all(6)
+	style.set_corner_radius_all(28)
+	style.content_margin_left = 40
+	style.content_margin_right = 40
+	style.content_margin_top = 28
+	style.content_margin_bottom = 36
+	return style
+
+
+func _show_dialog(dialog: Control) -> void:
+	_count_dialog.visible = dialog == _count_dialog
+	_tutorial_dialog.visible = dialog == _tutorial_dialog
+	if dialog != null:
+		(dialog.get_meta("buttons")[0] as Button).grab_focus()
+
+
+func _open_count_dialog() -> void:
+	if _launching:
+		return
+	_show_dialog(_count_dialog)
+
+
+func _choose_count(index: int) -> void:
+	if not _count_dialog.visible:
+		return
+	# この時点から入力のあったコントローラーを先着順で P1, P2, ... に割り当てる。
+	PlayerSlots.begin(index + 2)
+	_show_dialog(_tutorial_dialog)
+
+
+func _choose_tutorial(index: int) -> void:
+	if _launching or not _tutorial_dialog.visible:
+		return
+	_launching = true
+	MatchSession.start_versus(get_tree(), index == 0)
+
+
+## ESC: チュートリアル選択→人数選択→タイトルの順に戻る。
+func _dialog_back() -> void:
+	if _tutorial_dialog.visible:
+		PlayerSlots.end()
+		_show_dialog(_count_dialog)
+	elif _count_dialog.visible:
+		_show_dialog(null)
+		_buttons[0].grab_focus()
+
+
 func _input(event: InputEvent) -> void:
+	if _count_dialog != null and (_count_dialog.visible or _tutorial_dialog.visible):
+		if event is InputEventKey and event.pressed and not event.is_echo() and event.keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			_dialog_back()
+			return
 	if _credits != null and _credits.visible:
 		if _is_credits_close_event(event):
 			get_viewport().set_input_as_handled()
