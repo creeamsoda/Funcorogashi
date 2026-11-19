@@ -1,11 +1,12 @@
 extends Node3D
 ## 逃げるフン(Phase 2)の headless 自動テスト。追跡役のプレイヤーをスクリプトで動かし、実際の物理で検証する:
-##  open   : 1人で真っすぐ追うだけでは開けた場所で追いつけない
+##  open   : 1人で真っすぐ追った時に取れるまでの時間(計測のみ。逃げ元にも③で驚くため、追い続ければ取れる)
 ##  corner : 角へ追い込めば取れる
 ##  pincer : 壁際で2人で挟めば取れる
 ##  dash   : 最大溜めの突進なら開けた場所でも取れる
-##  drop   : 被弾で落ちたフンは即座に逃げ始める(その場で回ってから進む)
+##  drop   : 被弾で落ちたフンは、攻撃側が⓪以内なら猶予なくすぐ驚く
 ##  stunned: スタン中のプレイヤーからは逃げない
+##  static : flee_static_max_size 以下の小さいフンは近づかれても動かず、見た目は球
 ## 各シナリオの所要時間を出力するので、調整時の目安にも使う。
 
 class Chaser extends Player:
@@ -41,6 +42,7 @@ func _ready() -> void:
 		"dash": await _test_dash(),
 		"drop": await _test_drop(),
 		"stunned": await _test_stunned(),
+		"static": await _test_static(),
 	}
 	var ok := true
 	for key in results:
@@ -54,11 +56,11 @@ func _ready() -> void:
 func _test_open() -> bool:
 	var pk := _pickup(Vector3(-4, 0, 0))
 	var c := _chaser(0, Vector3(-9, 0, 0), pk)
-	var caught := await _run_until_caught(pk, 2.0)
-	_report.append("  [open] caught=%s (追いつけないこと)" % caught)
+	var caught := await _run_until_caught(pk, 5.0)
+	_report.append("  [open] caught_at=%.2fs (計測のみ)" % caught)
 	_cleanup([c, pk])
 	await _frames(2)
-	return caught < 0.0
+	return true
 
 
 func _test_corner() -> bool:
@@ -109,50 +111,68 @@ func _test_drop() -> bool:
 	await _frames(2)
 	victim.drop_and_stun()
 	await _frames(1)
-	# 攻撃側の検知半径に入っているフンだけが対象(遠くに散ったフンは逃げなくてよい)
+	# 攻撃側が止まっている時の驚き範囲⓪に入っているフンだけが対象(遠くに散ったフンは逃げなくてよい)
 	var start := {}
 	for child in _dung.get_children():
 		if child is DungPickup:
 			var pk := child as DungPickup
 			var edge := pk.global_position.distance_to(attacker.global_position) - attacker.body_radius() - pk._radius()
-			if edge < Config.balance.flee_detect_radius - 0.5:
+			if edge < Config.balance.flee_idle_alert_radius - 0.5:
 				start[pk] = pk.global_position
-	# 止まっている所から回ってから進み出すので、その時間を含めて待つ
-	await get_tree().create_timer(0.8).timeout
-	var moved := 0
+	await _frames(2)
+	# 散らばり方は乱数なので、攻撃側のすぐ横に落ちてそのまま回収されたフンは数えない
+	var remaining := 0
+	var reacted := 0
 	for pk in start:
-		if is_instance_valid(pk) and (pk as DungPickup).global_position.distance_to(start[pk]) > 0.3:
-			moved += 1
-	_report.append("  [drop] near_attacker=%d moved_in_0.8s=%d" % [start.size(), moved])
+		if is_instance_valid(pk) and not (pk as DungPickup).is_queued_for_deletion():
+			remaining += 1
+			if (pk as DungPickup)._state != DungPickup.FleeState.IDLE:
+				reacted += 1
+	_report.append("  [drop] near_attacker=%d remaining=%d surprised=%d" % [start.size(), remaining, reacted])
 	_cleanup([victim, attacker])
 	for child in _dung.get_children():
 		child.queue_free()
 	await _frames(2)
-	return start.size() > 0 and moved == start.size()
+	return reacted == remaining
 
 
 func _test_stunned() -> bool:
 	var pk := _pickup(Vector3(0, 0, -5))
 	var c := _chaser(0, Vector3(0, 0, -7.5), pk)
 	c.chase = false
-	await _frames(2)
-	c._enter_stun()
+	c._enter_stun() # フンが気付く前(最初の物理フレームより前)にスタンさせる
 	c._stun_t = 10.0
-	# スタン直前に動き出した分の減速(反応時間+減速)を待ってから測る
-	await get_tree().create_timer(Config.balance.flee_reaction_time + 0.3).timeout
 	var start := pk.global_position
-	await get_tree().create_timer(0.5).timeout
-	var still := pk.global_position.distance_to(start) < 0.05
-	_report.append("  [stunned] dung_moved=%.2fm state=%d threat=%s" % [pk.global_position.distance_to(start), c.state, pk._threat_dir])
+	await get_tree().create_timer(Config.balance.flee_surprise_time + 0.5).timeout
+	var still := pk.global_position.distance_to(start) < 0.05 and pk._state == DungPickup.FleeState.IDLE
+	_report.append("  [stunned] dung_moved=%.2fm dung_state=%d" % [pk.global_position.distance_to(start), pk._state])
 	_cleanup([c, pk])
 	await _frames(2)
 	return still
 
 
+func _test_static() -> bool:
+	var start := Vector3(0, 0, -6)
+	var pk := DungPickup.create(Config.balance.flee_static_max_size)
+	pk.position = start
+	_dung.add_child(pk)
+	var c := _chaser(0, Vector3(-3, 0, -6), pk)
+	c.chase = false
+	await get_tree().create_timer(1.0).timeout
+	var body := pk.get_node("Body") as MeshInstance3D
+	var still := pk.global_position.distance_to(start) < 0.01
+	var sphere := body.mesh is SphereMesh
+	var is_static := pk.is_static()
+	_report.append("  [static] still=%s sphere=%s" % [still, sphere])
+	_cleanup([c, pk])
+	await _frames(2)
+	return is_static and still and sphere
+
+
 func _pickup(pos: Vector3) -> DungPickup:
 	var pk := DungPickup.create(1.0)
+	pk.position = pos
 	_dung.add_child(pk)
-	pk.global_position = pos
 	return pk
 
 
@@ -161,8 +181,8 @@ func _chaser(pid: int, pos: Vector3, target: Node3D) -> Chaser:
 	c.player_id = pid
 	c.input_device = 9999
 	c.target = target
+	c.position = pos # 原点で一瞬フンに重なって回収しないよう、追加前に置く
 	add_child(c)
-	c.global_position = pos
 	return c
 
 

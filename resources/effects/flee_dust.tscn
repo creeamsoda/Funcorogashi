@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://b6lwdems82112"]
+
+[ext_resource type="Script" uid="uid://bj7dgdw6s4u05" path="res://scripts/effects/effect_player.gd" id="1_fx"]
+[ext_resource type="Texture2D" uid="uid://cyqtpunyt4mk7" path="res://resources/effects/textures/hard_circle.tres" id="3_hard"]
+
+[sub_resource type="Gradient" id="Gradient_sweat"]
+offsets = PackedFloat32Array(0, 0.24590164, 0.30737704, 0.7, 1)
+colors = PackedColorArray(0.6509804, 0.8784314, 1, 0, 0.6509804, 0.8784314, 1, 0, 0.65, 0.88, 1, 1, 0.65, 0.88, 1, 1, 0.65, 0.88, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_sweat"]
+gradient = SubResource("Gradient_sweat")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_sweat"]
+emission_shape = 2
+emission_sphere_radius = 0.5
+direction = Vector3(0, 1.5, 0.5)
+spread = 0.0
+initial_velocity_min = 3.0
+initial_velocity_max = 4.0
+gravity = Vector3(0, -14, 0)
+color_ramp = SubResource("GradientTexture1D_sweat")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sweat"]
+transparency = 1
+cull_mode = 2
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_texture = ExtResource("3_hard")
+
+[sub_resource type="QuadMesh" id="QuadMesh_sweat"]
+material = SubResource("StandardMaterial3D_sweat")
+size = Vector2(0.12, 0.2)
+
+[node name="FleeDust" type="Node3D" unique_id=1604919551]
+script = ExtResource("1_fx")
+one_shot = false
+
+[node name="Sweat" type="GPUParticles3D" parent="." unique_id=823762489]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+amount = 3
+lifetime = 0.3
+visibility_aabb = AABB(-4, -3, -4, 8, 6, 8)
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_sweat")
+draw_pass_1 = SubResource("QuadMesh_sweat")

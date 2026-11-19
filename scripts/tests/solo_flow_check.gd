@@ -36,6 +36,8 @@ func _ready() -> void:
 	var npc := npcs[0] as NpcBeetle
 	_check(npc._alive_elapsed >= 0.19, "npc_late_spawn_age")
 	var before_npc := npc.size
+	player.state = Player.State.DASHING # 突進無敵中として接触させる
+	player._dash_t = player._dash_accel_time
 	player._resolve_dash_contact(npc)
 	_check(npc.size < before_npc and game.stats[0]["dash_hits"] == 1, "npc_hit_stat")
 	player.add_size(10.0)

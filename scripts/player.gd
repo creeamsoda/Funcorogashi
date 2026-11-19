@@ -3,12 +3,25 @@ extends CharacterBody3D
 ## プレイヤー(フンコロガシ)。フン球を転がして移動し、接触でサイズが増える。
 ## 突進: ROLLING→DASH_CHARGING(長押しで溜め)→離して DASHING→(判定)→STUNNED。
 ##   溜めるほど速く長く進み、突進中もスティックで少し曲がれる。継続時間を過ぎたら減速して止まる。
-##   壁=スタンのみ(wall_crash_drops で従来のドロップに戻せる) / 突進中の相手=相打ち(両者ノックバック+両者ドロップ) / 非突進の相手=命中。
+##   DASHING は離してから加速時間(dash_accel_time × 保有サイズ倍率。フンが大きいほど短い)までが「突進加速」、以降止まるまでが「突進無敵」。
+##   壁=どちらのフェーズでもスタン(wall_crash_drops でドロップも。進入角 wall_slide_max_angle 以下なら壁沿いに滑って継続)。
+##   突進加速: 相手=ドロップさせず突進を続ける(相手に沿って進む) / 相手が突進無敵ならこちらだけドロップ。
+##   突進無敵: 相手が突進無敵なら相打ち(両者ノックバック+両者ドロップ) / それ以外の相手=命中。
 ##   被弾で drop_ratio 分を分裂ドロップ+スタン。自分のドロップはスタン明けまで回収不可。
+## 入力は PlayerInput、SE は PlayerAudio、実機振動は PlayerVibration、
+## 見た目の部品は BeetleModel / DashArrow / LeaderCrown に分けている。
 
 signal size_changed(player_id: int, size: float)
 signal dashed(player_id: int)
 signal dash_hit(attacker_id: int, victim_id: int)
+## 突進命中で相手に落とさせたフンの量(結果画面の表彰用)。
+signal dash_drop_caused(attacker_id: int, amount: float)
+## フンを拾った(special=スペシャル・フン)。
+signal dung_picked_up(player_id: int, special: bool)
+## 壁に激突してスタンした(滑って継続した場合は含まない)。
+signal wall_crashed(player_id: int)
+## 加速板に乗った瞬間。
+signal boost_pad_entered(player_id: int)
 ## 実機振動の発火契機をテスト・演出連携から観測するための通知。
 signal vibration_requested(player_id: int)
 ## 共有デバイス上の全プレイヤーが対象ならtrue。一部だけなら誤振動防止のためfalse。
@@ -18,30 +31,12 @@ enum State { ROLLING, DASH_CHARGING, DASHING, STUNNED }
 
 const DUNG_COLOR := Color(0.45, 0.30, 0.18)
 const WINDUP_FLASH_COLOR := Color(1.0, 1.0, 1.0)
-const WINDUP_FLASH_INTERVAL := 0.08
-## 溜め中の方向矢印(見た目のみ)。長さは溜め量で補間する。
-const DASH_ARROW_MIN_LENGTH := 1.0
-const DASH_ARROW_MAX_LENGTH := 3.5
-const DASH_ARROW_WIDTH := 0.35
-const DASH_ARROW_HEAD := 0.8
-const DASH_ARROW_FULL_COLOR := Color(1.0, 0.85, 0.2)
-const BEETLE_SCENE: PackedScene = preload("res://resources/models/beetle/beetle.glb")
-## 仮キューブの全長0.9を基準に、脚を含むモデル全長を約1.2倍にする。
-const BEETLE_REFERENCE_LENGTH := 0.9
-const BEETLE_VISUAL_SIZE_RATIO := 1.2
-## 初期の12度姿勢でサイズを合わせ、傾きの調整でモデル自体が拡大しないようにする。
-const BEETLE_SIZE_REFERENCE_DEGREES := 12.0
-const BEETLE_HEAD_DOWN_DEGREES := 45.0
-## 球の外接矩形へ少し入れ、球面に腹側を近づける。
-const BEETLE_BALL_GAP := -0.10
-
-const HIT_SE: AudioStream = preload("res://resources/audio/hit.wav")
-const WALL_HIT_SE: AudioStream = preload("res://resources/audio/wallHit.wav")
-const CHARGE_SE: AudioStream = preload("res://resources/audio/charge.wav")
-const DASH_SE: AudioStream = preload("res://resources/audio/dash.wav")
-const GET_NEUTRAL_SE: AudioStream = preload("res://resources/audio/getNeutral.wav")
-const GET_HIGH_SE: AudioStream = preload("res://resources/audio/getHigh.wav")
-const GET_HIGH_HIGH_SE: AudioStream = preload("res://resources/audio/getHighHigh.wav")
+const STUN_COLOR := Color(0.4, 0.4, 0.4)
+## 突進の加速線・ブラックホールの渦(見た目はシーン側でインスペクタから調整する)。
+const DASH_LINES_FX: PackedScene = preload("res://resources/effects/dash_lines.tscn")
+const BLACKHOLE_FX: PackedScene = preload("res://resources/effects/blackhole_swirl.tscn")
+## 溜め中はゆっくり点滅する。突進中(加速・無敵とも)は点滅しない。
+const CHARGE_FLASH_INTERVAL := 0.25
 
 const PLAYER_COLORS := [
 	Color(0.90, 0.30, 0.25), # P1 赤
@@ -50,15 +45,10 @@ const PLAYER_COLORS := [
 	Color(0.95, 0.80, 0.25), # P4 黄
 ]
 
-const STICK_DEADZONE := 0.2
-## SDL mini-gamepadモードで報告されるBTN 1を突進に使用する。
-const JOYCON_DASH_BUTTON := JOY_BUTTON_B
-## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
-const ARROWS_DASH_KEY := KEY_SLASH
-const WASD_DASH_KEY := KEY_SHIFT
-## アリーナ内寸の半分。ドロップを場外に出さないために使用。
+## アリーナ内寸の半分(Stage と同じ値)。
 const ARENA_HX := Stage.HALF_X
 const ARENA_HZ := Stage.HALF_Z
+## ドロップを場外に出さないための内側の余白。
 const DROP_MARGIN := 0.6
 ## 物理レイヤーのビット値。NPCは専用レイヤーで壁の外から出入りする。
 const WALL_LAYER := 1
@@ -88,6 +78,7 @@ var _dash_t := 0.0
 var _dash_speed := 0.0      ## 今回の突進速度(発動時の溜め量で決定)
 var _dash_duration := 0.0   ## 今回の突進継続時間(減速を除く)
 var _dash_turn_rate := 0.0  ## 今回の突進中の旋回上限(度/秒)
+var _dash_accel_time := 0.0 ## 今回の突進加速時間(発動時の保有サイズで決定)。これを過ぎると突進無敵
 var _stun_t := 0.0
 var _cd_t := 0.0            ## 突進クールタイム残り
 var _kb_vel := Vector3.ZERO ## ノックバック速度(相打ち時)
@@ -95,31 +86,36 @@ var _kb_t := 0.0
 var _dash_prev := false     ## 突進ボタンの前フレーム状態(押下エッジ検出)
 var _slow_t := 0.0          ## オランウータン直撃の軽スロウ残り
 var _slow_factor := 1.0
+var _blackhole_t := 0.0     ## ブラックホール効果の残り(秒)
+var _speed_boost_t := 0.0   ## 高速効果の残り(秒)
 var _dash_suppressed := false
 var _scatter_rng: RandomNumberGenerator
+## 高低差のあるステージ(Stage.has_elevation)用の上下移動。平らなステージでは使わない(y=半径に固定)。
+var _vy := 0.0
+var _was_on_boost_pad := false  ## 前フレームに加速板の上にいたか(乗った瞬間の検出)
+var _on_ground := true
+var _applied_radius := -1.0
 
+var _audio: PlayerAudio
 var _ball_mesh: SphereMesh
 var _ball_mi: MeshInstance3D
 var _ball_mat: StandardMaterial3D
+## 所持フンの色。他のフン(茶色)と区別するためプレイヤー色にする。
+var _ball_color: Color = DUNG_COLOR
 var _ball_shape: SphereShape3D
-var _beetle: Node3D
-var _dash_arrow: Node3D
-var _dash_arrow_shaft: MeshInstance3D
-var _dash_arrow_head: MeshInstance3D
-var _dash_arrow_mat: StandardMaterial3D
-var _beetle_model: Node3D
-var _beetle_meshes: Array[MeshInstance3D] = []
-var _beetle_materials: Array[StandardMaterial3D] = []
+var _beetle: BeetleModel
 var _beetle_base_colors: Array[Color] = []
-var _beetle_rear_extent := 0.0
-var _crown: Label3D
-var _hit_audio: AudioStreamPlayer
-var _wall_hit_audio: AudioStreamPlayer
-var _charge_audio: AudioStreamPlayer
-var _dash_audio: AudioStreamPlayer
-var _get_neutral_audio: AudioStreamPlayer
-var _get_high_audio: AudioStreamPlayer
-var _get_high_high_audio: AudioStreamPlayer
+var _dash_arrow: DashArrow
+var _speed_lines: EffectPlayer
+var _blackhole_swirl: EffectPlayer
+var _speed_boost_lines: DashSpeedLines
+var _afterimage: AfterimageTrail
+var _crown: LeaderCrown
+
+
+## プレイヤー番号の色(HUD・羽・所持フンで共通)。
+static func color_for(id: int) -> Color:
+	return PLAYER_COLORS[id % PLAYER_COLORS.size()]
 
 
 func _ready() -> void:
@@ -128,7 +124,8 @@ func _ready() -> void:
 	collision_layer = HUMAN_LAYER
 	collision_mask = WALL_LAYER | HUMAN_LAYER | NPC_LAYER
 	size = initial_size if initial_size > 0.0 else Config.balance.size_start
-	_build_audio()
+	_audio = PlayerAudio.new(self)
+	_audio.charge.finished.connect(_on_charge_audio_finished)
 	_build_visual()
 	_apply_size_visual()
 
@@ -136,15 +133,13 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if not gameplay_active:
 		return
-	if _cd_t > 0.0:
-		_cd_t -= delta
-	if _slow_t > 0.0:
-		_slow_t -= delta
+	_tick_timers(delta)
 	var dash_now := _dash_input_held()
 	if _dash_suppressed:
 		if not dash_now:
 			_dash_suppressed = false
 		dash_now = false
+	_check_boost_pad()
 	match state:
 		State.ROLLING:
 			_process_rolling(delta)
@@ -157,14 +152,26 @@ func _physics_process(delta: float) -> void:
 		State.STUNNED:
 			_process_stunned(delta)
 	_dash_prev = dash_now
-	position.y = _radius()
+	_update_vertical(delta)
 	_update_beetle()
 	_update_dash_arrow()
+	_update_speed_lines()
+
+
+func _tick_timers(delta: float) -> void:
+	if _cd_t > 0.0:
+		_cd_t -= delta
+	if _slow_t > 0.0:
+		_slow_t -= delta
+	if _blackhole_t > 0.0:
+		_blackhole_t -= delta
+	if _speed_boost_t > 0.0:
+		_speed_boost_t -= delta
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 開発用: キーボード操作時のみ、Space で疑似的にフンを取り込んで成長を確認できる。
-	if not gameplay_active or not debug_growth_enabled or input_device not in [-1, -2]:
+	if not gameplay_active or not debug_growth_enabled or not PlayerInput.is_keyboard(input_device):
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		# 標準サイズ1.0の動物フンを拾った場合の疑似成長。
@@ -192,10 +199,12 @@ func stop_gameplay() -> void:
 	velocity = Vector3.ZERO
 	_kb_vel = Vector3.ZERO
 	state = State.ROLLING
+	_blackhole_t = 0.0
+	_speed_boost_t = 0.0
+	_update_speed_lines()
 	set_process_unhandled_input(false)
-	for child in get_children():
-		if child is AudioStreamPlayer:
-			(child as AudioStreamPlayer).stop()
+	if _audio != null:
+		_audio.stop_all()
 	if is_in_group("player") and InputRouter.is_joypad(input_device):
 		Input.stop_joy_vibration(input_device)
 
@@ -203,23 +212,13 @@ func stop_gameplay() -> void:
 func add_size(amount: float) -> void:
 	if not gameplay_active or is_queued_for_deletion():
 		return
-	size += amount
-	_apply_size_visual()
-	size_changed.emit(player_id, size)
+	_set_size(size + amount)
 
 
 ## 実際の獲得量に応じて、通常・大きめ・最大級の取得SEを鳴らす。
 func play_pickup_se(amount: float) -> void:
-	if not gameplay_active:
-		return
-	var neutral_max := maxf(Config.balance.pickup_se_neutral_max, 0.0)
-	var high_high_min := maxf(Config.balance.pickup_se_high_high_min, neutral_max)
-	if amount >= high_high_min:
-		_play_audio_overlapping(_get_high_high_audio)
-	elif amount > neutral_max:
-		_play_audio_overlapping(_get_high_audio)
-	else:
-		_play_audio_overlapping(_get_neutral_audio)
+	if gameplay_active:
+		_audio.play_pickup(amount)
 
 
 ## オランウータンのフン直撃効果。切替可(0=ボーナス+スロウ / 1=ボーナスのみ / 2=スロウのみ)。
@@ -234,23 +233,40 @@ func apply_orangutan_hit() -> void:
 		_slow_t = Config.balance.orangutan_slow_time
 
 
-func _current_slow() -> float:
-	return _slow_factor if _slow_t > 0.0 else 1.0
+## 特殊フンの回収効果。どちらも効果時間①。取り直したら残り時間を①に戻す。
+func apply_special_dung(kind: DungPickup.Kind) -> void:
+	if not gameplay_active or is_queued_for_deletion():
+		return
+	match kind:
+		DungPickup.Kind.BLACKHOLE:
+			_blackhole_t = Config.balance.special_effect_time
+		DungPickup.Kind.SPEED:
+			_speed_boost_t = Config.balance.special_effect_time
 
 
-## 通常移動の速度。保有フンが大きいほど遅く、オランウータン直撃のスロウも掛かる。
-func _move_speed() -> float:
-	return Config.balance.move_speed_base * Config.balance.move_speed_scale(size) * _current_slow()
+## ブラックホール効果中か(範囲②のフンを引き寄せる)。
+func is_blackhole_active() -> bool:
+	return gameplay_active and _blackhole_t > 0.0
 
 
-## 最大溜めまでの時間(秒)。保有フンが大きいほど長い。
-func _charge_full_time() -> float:
-	return Config.balance.dash_charge_time * Config.balance.charge_time_scale(size)
+## 高速効果中か(通常移動が固定速度④)。
+func is_speed_boost_active() -> bool:
+	return gameplay_active and _speed_boost_t > 0.0
 
 
-## 今の溜め量(0..1)。保有フンによる溜め時間の延びを反映する。
-func _charge_ratio() -> float:
-	return Config.balance.dash_charge_ratio(_charge_t, Config.balance.charge_time_scale(size))
+## 突進加速中(離してから加速時間まで)。壁でスタンし、相手をドロップさせられない。
+func is_dash_accelerating() -> bool:
+	return state == State.DASHING and _dash_t < _dash_accel_time
+
+
+## 突進無敵中(加速時間後〜止まるまで)。相手をドロップさせ、互いに無敵なら相打ち。
+func is_dash_invincible() -> bool:
+	return state == State.DASHING and _dash_t >= _dash_accel_time
+
+
+## 空中(落下中)か。
+func is_airborne() -> bool:
+	return not _on_ground
 
 
 func body_radius() -> float:
@@ -260,7 +276,7 @@ func body_radius() -> float:
 ## F2 デバッグ表示: 向き(突進方向)と本体半径。
 func debug_draw(overlay: DebugOverlay) -> void:
 	var base := Vector3(global_position.x, 0.05, global_position.z)
-	var color: Color = PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
+	var color := color_for(player_id)
 	overlay.line(base, base + facing * 3.0, color)
 	overlay.circle(base, _radius(), color)
 	if state == State.DASH_CHARGING:
@@ -269,6 +285,8 @@ func debug_draw(overlay: DebugOverlay) -> void:
 		var reach := _dash_speed_for(ratio) * (_dash_duration_for(ratio) + Config.balance.dash_end_decel_time * 0.5)
 		overlay.line(base, base + facing * reach, Color.WHITE)
 		overlay.circle(base + facing * reach, 0.3, Color.WHITE, 12)
+	if is_blackhole_active():
+		overlay.circle(base, _radius() + Config.balance.blackhole_radius, Color(0.5, 0.4, 1.0), 48)
 
 
 ## 現在1位を示す仮の王冠表示。順位判定と残り30秒の制御は GameManager が行う。
@@ -283,9 +301,7 @@ func drop_and_stun(_is_self_crash: bool = false) -> void:
 		return
 	var detached: float = size * clampf(Config.balance.drop_ratio, 0.0, 1.0)
 	if detached > 0.0:
-		size -= detached
-		_apply_size_visual()
-		size_changed.emit(player_id, size)
+		_set_size(size - detached)
 		var loss_ratio := clampf(Config.balance.drop_loss_ratio, 0.0, 1.0)
 		var ground_amount := detached * (1.0 - loss_ratio)
 		if ground_amount > 0.0:
@@ -293,47 +309,39 @@ func drop_and_stun(_is_self_crash: bool = false) -> void:
 	_enter_stun()
 
 
-## --- 突進 ---
-
-## 突進ボタンの押下で溜めを開始する。発動はボタンを離した時(_process_charging)。
-func _start_dash() -> void:
-	if not gameplay_active:
-		return
-	state = State.DASH_CHARGING
-	_charge_t = 0.0
-	_play_charge_audio()
-	dashed.emit(player_id)
+func _set_size(value: float) -> void:
+	size = value
+	_apply_size_visual()
+	size_changed.emit(player_id, size)
 
 
-## 溜め中: 低速で移動・向き変更でき、離すと発動。最低溜め前に離しても最低溜めで発動する。
-func _process_charging(delta: float, held: bool) -> void:
-	_charge_t += delta
-	var iv := _read_move()
-	var dir := Vector3(iv.x, 0.0, iv.y)
-	if dir.length() > 0.15:
-		facing = dir.normalized()
-		velocity = facing * _move_speed() * Config.balance.dash_charge_move_ratio
-	else:
-		velocity = Vector3.ZERO
-	move_and_slide()
-	_roll_ball(delta)
-	var b := Config.balance
-	var auto_release := b.dash_charge_hold_max > 0.0 and _charge_t >= _charge_full_time() + b.dash_charge_hold_max
-	if (not held and _charge_t >= b.dash_charge_min) or auto_release:
-		_launch_dash()
+## --- 速度・時間(保有サイズで変わる値) ---
+
+func _current_slow() -> float:
+	return _slow_factor if _slow_t > 0.0 else 1.0
 
 
-func _launch_dash() -> void:
-	var ratio := _charge_ratio()
-	_stop_charge_audio()
-	state = State.DASHING
-	_dash_t = 0.0
-	_dash_dir = facing
-	_dash_speed = _dash_speed_for(ratio)
-	_dash_duration = _dash_duration_for(ratio)
-	_dash_turn_rate = lerpf(Config.balance.dash_turn_rate, Config.balance.dash_turn_rate_at_max, ratio)
-	_cd_t = Config.balance.dash_cooldown
-	_play_audio(_dash_audio)
+## 通常移動の速度。保有フンが大きいほど遅く、オランウータン直撃のスロウも掛かる。
+## 高速効果中は重さ・スロウに関係なく固定の速度④(突進には影響しない)。
+func _move_speed() -> float:
+	if is_speed_boost_active():
+		return Config.balance.speed_boost_move_speed
+	return Config.balance.move_speed_base * Config.balance.move_speed_scale(size) * _current_slow()
+
+
+## 最大溜めまでの時間(秒)。保有フンが大きいほど長い。
+func _charge_full_time() -> float:
+	return Config.balance.dash_charge_time * Config.balance.charge_time_scale(size)
+
+
+## 突進加速の時間(秒)。保有フンが大きいほど長い。
+func _accel_time() -> float:
+	return maxf(Config.balance.dash_accel_time, 0.0) * Config.balance.accel_time_scale(size)
+
+
+## 今の溜め量(0..1)。保有フンによる溜め時間の延びを反映する。
+func _charge_ratio() -> float:
+	return Config.balance.dash_charge_ratio(_charge_t, Config.balance.charge_time_scale(size))
 
 
 func _dash_speed_for(ratio: float) -> float:
@@ -344,6 +352,90 @@ func _dash_duration_for(ratio: float) -> float:
 	return lerpf(Config.balance.dash_duration_min, Config.balance.dash_duration_max, ratio)
 
 
+## --- 通常移動・溜め ---
+
+func _process_rolling(delta: float) -> void:
+	_walk(delta, 1.0)
+
+
+## 溜め中: 低速で移動・向き変更でき、離すと発動。最低溜め前に離しても最低溜めで発動する。
+func _process_charging(delta: float, held: bool) -> void:
+	_charge_t += delta
+	_walk(delta, Config.balance.dash_charge_move_ratio)
+	var b := Config.balance
+	var auto_release := b.dash_charge_hold_max > 0.0 and _charge_t >= _charge_full_time() + b.dash_charge_hold_max
+	if (not held and _charge_t >= b.dash_charge_min) or auto_release:
+		_launch_dash()
+
+
+## 入力方向へ向きを変え、通常速度 × speed_ratio で進む(入力なしなら止まる)。
+func _walk(delta: float, speed_ratio: float) -> void:
+	var dir := _move_input_dir()
+	if dir != Vector3.ZERO:
+		facing = dir
+		velocity = dir * _move_speed() * speed_ratio
+	else:
+		velocity = Vector3.ZERO
+	_slide_move(velocity * delta)
+	_roll_ball(delta)
+
+
+## --- 突進 ---
+
+## 突進ボタンの押下で溜めを開始する。発動はボタンを離した時(_process_charging)。
+func _start_dash() -> void:
+	if not gameplay_active:
+		return
+	state = State.DASH_CHARGING
+	_charge_t = 0.0
+	_play_audio(_audio.charge)
+	dashed.emit(player_id)
+
+
+func _launch_dash() -> void:
+	_begin_dash(facing, _charge_ratio(), _accel_time())
+
+
+## 加速板: 乗った瞬間、または板の上で突進無敵でなくなったら、即座に突進無敵の突進を始める(スタン中を除く)。
+## 向きは入力方向(無ければ今の向き)。溜め中なら溜めを打ち切る。突進無敵中に乗ったら突進をかけ直す。
+func _check_boost_pad() -> void:
+	var on := Stage.is_on_boost_pad(global_position)
+	var entered := on and not _was_on_boost_pad
+	_was_on_boost_pad = on
+	if entered and gameplay_active:
+		boost_pad_entered.emit(player_id)
+	if not on or state == State.STUNNED:
+		return
+	if is_dash_invincible() and not entered:
+		return
+	_boost_dash()
+
+
+func _boost_dash() -> void:
+	var dir := _move_input_dir()
+	if dir == Vector3.ZERO:
+		dir = Vector3(facing.x, 0.0, facing.z)
+	if dir.is_zero_approx():
+		dir = Vector3.FORWARD
+	var ratio := clampf(Config.balance.boost_pad_charge_ratio, 0.0, 1.0)
+	_begin_dash(dir.normalized(), ratio, 0.0) # 加速を飛ばして即座に突進無敵
+
+
+## 溜め量 ratio の突進を dir へ始める。accel_time を過ぎると突進無敵になる。
+func _begin_dash(dir: Vector3, ratio: float, accel_time: float) -> void:
+	_stop_charge_audio()
+	state = State.DASHING
+	_dash_t = 0.0
+	_dash_dir = dir
+	facing = dir
+	_dash_speed = _dash_speed_for(ratio)
+	_dash_duration = _dash_duration_for(ratio)
+	_dash_turn_rate = lerpf(Config.balance.dash_turn_rate, Config.balance.dash_turn_rate_at_max, ratio)
+	_dash_accel_time = accel_time
+	_cd_t = Config.balance.dash_cooldown
+	_play_audio(_audio.dash)
+
+
 func _process_dashing(delta: float) -> void:
 	_dash_t += delta
 	_steer_dash(delta)
@@ -352,113 +444,116 @@ func _process_dashing(delta: float) -> void:
 	if _dash_t > _dash_duration:
 		speed *= clampf(1.0 - (_dash_t - _dash_duration) / maxf(decel, 0.001), 0.0, 1.0)
 	velocity = _dash_dir * speed # 転がし演出用
-	var col := move_and_collide(_dash_dir * speed * delta)
+	var col := _ground_move(_dash_dir * speed * delta)
 	if col != null:
 		var other := col.get_collider()
 		if other is Player:
-			_resolve_dash_contact(other as Player)
+			_resolve_dash_contact(other as Player, col)
 		elif other is Node and (other as Node).is_in_group("wall"):
-			_play_audio(_wall_hit_audio)
-			_play_impact_vibrations([self])
-			if Config.balance.wall_crash_drops:
-				drop_and_stun(true)
-			else:
-				_enter_stun()
+			if not _try_wall_slide(col):
+				_crash_into_wall()
 		else:
 			_end_dash() # 想定外の障害物はそのまま停止
-	elif _dash_t >= _dash_duration + decel:
+	# 相手に押し付けたまま突進を続けている場合も、時間切れで止める。
+	if state == State.DASHING and _dash_t >= _dash_duration + decel:
 		_end_dash()
 	_roll_ball(delta)
 
 
+func _crash_into_wall() -> void:
+	if gameplay_active:
+		wall_crashed.emit(player_id)
+	_play_audio(_audio.wall_hit)
+	_play_impact_vibrations([self])
+	if Config.balance.wall_crash_drops:
+		drop_and_stun(true)
+	else:
+		_enter_stun()
+
+
+## 壁への進入角(壁面と突進方向のなす角)が wall_slide_max_angle 以下なら、
+## 突進方向を壁面に沿わせて残りの移動を続け true を返す。深い角度なら false(激突)。
+func _try_wall_slide(col: KinematicCollision3D) -> bool:
+	var normal := col.get_normal()
+	normal.y = 0.0
+	if normal.length() < 0.01:
+		return false
+	normal = normal.normalized()
+	var into := -_dash_dir.dot(normal) # 壁へ向かう成分(=sin(進入角))
+	if into <= 0.0:
+		return true # 壁から離れる向きの接触は無視して継続
+	var incidence := rad_to_deg(asin(clampf(into, 0.0, 1.0)))
+	if incidence > Config.balance.wall_slide_max_angle:
+		return false
+	var along := _dash_dir - normal * _dash_dir.dot(normal)
+	if along.length() < 0.01:
+		return false
+	_dash_dir = along.normalized()
+	facing = _dash_dir
+	var rem := col.get_remainder()
+	rem.y = 0.0
+	_ground_move(_dash_dir * rem.length())
+	return true
+
+
 ## スティック方向へ、今回の旋回上限(度/秒)まで突進方向を曲げる。
 func _steer_dash(delta: float) -> void:
-	var iv := _read_move()
-	var want := Vector3(iv.x, 0.0, iv.y)
-	if want.length() <= 0.15:
+	var want := _move_input_dir()
+	if want == Vector3.ZERO:
 		return
-	var angle := _dash_dir.signed_angle_to(want.normalized(), Vector3.UP)
+	var angle := _dash_dir.signed_angle_to(want, Vector3.UP)
 	var max_step := deg_to_rad(_dash_turn_rate) * delta
 	_dash_dir = _dash_dir.rotated(Vector3.UP, clampf(angle, -max_step, max_step)).normalized()
 	facing = _dash_dir
 
 
-func _resolve_dash_contact(victim: Player) -> void:
+func _resolve_dash_contact(victim: Player, col: KinematicCollision3D = null) -> void:
 	if not gameplay_active or not victim.gameplay_active or victim.is_queued_for_deletion():
 		return
-	if victim.state == State.DASHING:
-		# 相打ち: 両者ノックバック+両者ドロップ
-		_play_audio(_hit_audio)
-		var away := global_position - victim.global_position
-		away.y = 0.0
-		away = away.normalized() if away.length() > 0.01 else -_dash_dir
-		_apply_knockback(away)
-		victim._apply_knockback(-away)
-		_play_impact_vibrations([self, victim])
-		drop_and_stun()
-		victim.drop_and_stun()
+	var away := global_position - victim.global_position
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.01 else -_dash_dir
+	if victim.is_dash_invincible():
+		_play_audio(_audio.hit)
+		if is_dash_invincible():
+			# 相打ち: 両者ノックバック+両者ドロップ
+			_apply_knockback(away)
+			victim._apply_knockback(-away)
+			_play_impact_vibrations([self, victim])
+			drop_and_stun()
+			victim.drop_and_stun()
+		else:
+			# 突進加速中に相手の突進無敵へぶつかった: こちらだけドロップ
+			_apply_knockback(away)
+			_play_impact_vibrations([self])
+			var before_self := size
+			drop_and_stun()
+			dash_hit.emit(victim.player_id, player_id)
+			victim.dash_drop_caused.emit(victim.player_id, maxf(0.0, before_self - size))
+	elif not is_dash_invincible():
+		# 突進加速中(または突進外)の接触: ドロップさせず突進を続ける。
+		# 残りの移動は相手の表面に沿わせる(正面なら押し付けたまま、突進無敵になった時点で命中)。
+		if col != null:
+			var rem := col.get_remainder().slide(col.get_normal())
+			rem.y = 0.0
+			if rem.length() > 0.0001:
+				_ground_move(rem)
 	else:
 		# 命中: 相手だけドロップ+スタン、自分は無傷
-		_play_audio(_hit_audio)
-		_play_impact_vibrations([victim])
+		_play_audio(_audio.hit)
+		_play_impact_vibrations([victim], [self])
+		var before_victim := victim.size
 		victim.drop_and_stun()
 		dash_hit.emit(player_id, victim.player_id)
+		dash_drop_caused.emit(player_id, maxf(0.0, before_victim - victim.size))
 		_end_dash()
 
 
-## MVP対象の衝撃を、対象プレイヤーのデバイスごとにまとめて振動させる。
-## 結合ペアなど同じdeviceを複数人が共有する場合、共有者の一部だけを振動させることはできない。
-## 無関係なプレイヤーへの誤振動を避けるため、共有者全員がtargetsに含まれる場合だけ実機振動を許可する。
-func _play_impact_vibrations(targets: Array) -> void:
-	if not gameplay_active:
-		return
-	var targets_by_device := {}
-	for node in targets:
-		if not node is Player:
-			continue
-		var target := node as Player
-		if not target.gameplay_active or not target.is_in_group("player") or target.is_queued_for_deletion():
-			continue
-		target.vibration_requested.emit(target.player_id)
-		if not InputRouter.is_joypad(target.input_device):
-			continue
-		if not targets_by_device.has(target.input_device):
-			targets_by_device[target.input_device] = {}
-		targets_by_device[target.input_device][target.get_instance_id()] = true
-
-	for device_value in targets_by_device:
-		var device := int(device_value)
-		var target_ids: Dictionary = targets_by_device[device]
-		var assigned_ids := {}
-		for node in get_tree().get_nodes_in_group("player"):
-			if node is Player:
-				var assigned := node as Player
-				if not assigned.is_queued_for_deletion() and assigned.input_device == device:
-					assigned_ids[assigned.get_instance_id()] = true
-		var exclusive := assigned_ids.size() == target_ids.size()
-		vibration_route_resolved.emit(device, exclusive)
-		if exclusive:
-			_start_device_vibration(device)
-
-
-## キーボード・待機割当・切断済みjoypadでは呼ばれないデバイス単位の振動処理。
-func _start_device_vibration(device: int) -> void:
-	if not Input.get_connected_joypads().has(device):
-		return
-	if not Input.has_joy_vibration(device):
-		return
-	var weak := clampf(Config.balance.joy_vibration_weak_magnitude, 0.0, 1.0)
-	var strong := clampf(Config.balance.joy_vibration_strong_magnitude, 0.0, 1.0)
-	var duration := maxf(Config.balance.joy_vibration_duration, 0.0)
-	# Godotではduration=0が無期限振動なので、0は設定上の「無効」として扱う。
-	if duration <= 0.0 or (weak <= 0.0 and strong <= 0.0):
-		return
-	Input.start_joy_vibration(
-		device,
-		weak,
-		strong,
-		duration
-	)
+## MVP対象の衝撃を、対象プレイヤーのデバイスごとにまとめて振動させる(詳細は PlayerVibration)。
+## targets は被弾・壁スタンの長い振動、light_targets は突進を当てた側の短い振動。
+func _play_impact_vibrations(targets: Array, light_targets: Array = []) -> void:
+	if gameplay_active:
+		PlayerVibration.play_impact(self, targets, light_targets)
 
 
 func _apply_knockback(dir: Vector3) -> void:
@@ -472,6 +567,8 @@ func _end_dash() -> void:
 	velocity = Vector3.ZERO
 
 
+## --- スタン・ドロップ ---
+
 func _enter_stun() -> void:
 	_stop_charge_audio()
 	state = State.STUNNED
@@ -483,7 +580,7 @@ func _process_stunned(delta: float) -> void:
 	_stun_t -= delta
 	if _kb_t > 0.0:
 		_kb_t -= delta
-		move_and_collide(_kb_vel * delta)
+		_ground_move(_kb_vel * delta)
 	if _stun_t <= 0.0:
 		state = State.ROLLING
 
@@ -507,131 +604,157 @@ func _scatter_drops(total: float) -> void:
 
 ## 散らばり位置: アリーナ内(場外に出さない) かつ 本人から min〜max の距離(直近には落とさない)。
 func _drop_position(origin: Vector3) -> Vector3:
-	var bx: float = ARENA_HX - DROP_MARGIN
-	var bz: float = ARENA_HZ - DROP_MARGIN
 	var min_r: float = Config.balance.drop_scatter_min_radius
 	var max_r: float = maxf(min_r, Config.balance.drop_scatter_radius)
 	for _attempt in 12:
 		var ang := (_scatter_rng.randf() if _scatter_rng != null else randf()) * TAU
 		var d := _scatter_rng.randf_range(min_r, max_r) if _scatter_rng != null else randf_range(min_r, max_r)
 		var p := origin + Vector3(cos(ang), 0.0, sin(ang)) * d
-		if absf(p.x) <= bx and absf(p.z) <= bz:
+		if Stage.is_inside_arena(p, DROP_MARGIN) and not _drop_lands_above(p):
 			return Vector3(p.x, 0.0, p.z)
 	# フォールバック(隅などで内側候補が出なかった時): 中心方向へ min_r 離し境界内へ
 	var to_center := Vector3(-origin.x, 0.0, -origin.z)
 	var dir := to_center.normalized() if to_center.length() > 0.01 else Vector3(0, 0, -1)
 	var fp := origin + dir * min_r
-	return Vector3(clampf(fp.x, -bx, bx), 0.0, clampf(fp.z, -bz, bz))
+	return Stage.clamp_to_arena(Vector3(fp.x, 0.0, fp.z), DROP_MARGIN)
 
 
-## --- 入力 ---
-
-func _process_rolling(delta: float) -> void:
-	var iv := _read_move()
-	var dir := Vector3(iv.x, 0.0, iv.y)
-	if dir.length() > 0.15:
-		dir = dir.normalized()
-		facing = dir
-		velocity = dir * _move_speed()
-	else:
-		velocity = Vector3.ZERO
-	move_and_slide()
-	_roll_ball(delta)
+## 高低差のあるステージで、散らばり先が自分の足元より段差を超えて高い(台の上など)か。
+## 台の下にいるプレイヤーのフンが台の上へ飛び上がらないようにする。
+func _drop_lands_above(p: Vector3) -> bool:
+	if not Stage.has_elevation():
+		return false
+	var feet := global_position.y - _radius()
+	return Stage.top_ground_height(p) > feet + Config.balance.step_height
 
 
-func _dash_input_held() -> bool:
-	if input_device == -1:
-		return Input.is_key_pressed(ARROWS_DASH_KEY)
-	elif input_device == -2:
-		return Input.is_key_pressed(WASD_DASH_KEY)
-	elif input_device >= 0 and input_device < 9000:
-		return Input.is_joy_button_pressed(input_device, JOYCON_DASH_BUTTON)
+## --- 移動(地形) ---
+
+## 水平方向へ motion だけ動かす。床(上向きの面: 斜面・天面)は面に沿って登り、
+## 壁やプレイヤーに当たったら小さい段差なら乗り越え、乗り越えられなければその衝突を返す(残りは動かない)。
+func _ground_move(motion: Vector3) -> KinematicCollision3D:
+	var rem := Vector3(motion.x, 0.0, motion.z)
+	for _i in 4:
+		if rem.length_squared() < 1e-10:
+			return null
+		var col := move_and_collide(rem)
+		if col == null:
+			return null
+		if _is_floor_collision(col):
+			rem = col.get_remainder().slide(col.get_normal()) # 斜面: 面に沿って登る
+			continue
+		if not (col.get_collider() is Player) and _try_step_up(col.get_remainder()):
+			return null
+		return col
+	return null
+
+
+## 通常移動用: 壁やプレイヤーに当たったら面に沿って滑らせる(旧 move_and_slide 相当)。
+func _slide_move(motion: Vector3) -> void:
+	var rem := Vector3(motion.x, 0.0, motion.z)
+	for _i in 4:
+		if rem.length_squared() < 1e-10:
+			return
+		var col := _ground_move(rem)
+		if col == null:
+			return
+		var n := col.get_normal()
+		n.y = 0.0
+		if n.length_squared() < 1e-6:
+			return
+		rem = col.get_remainder().slide(n.normalized())
+		rem.y = 0.0
+
+
+func _is_floor_collision(col: KinematicCollision3D) -> bool:
+	return not (col.get_collider() is Player) and col.get_normal().y >= Stage.FLOOR_MIN_NORMAL_Y
+
+
+## 小さい段差の乗り越え: 段差の高さだけ持ち上げて前へ進み、下ろして床に乗れたら採用。だめなら元に戻す。
+func _try_step_up(rem: Vector3) -> bool:
+	var step: float = Config.balance.step_height
+	if not Stage.has_elevation() or not _on_ground or step <= 0.0:
+		return false
+	var horiz := Vector3(rem.x, 0.0, rem.z)
+	if horiz.length_squared() < 1e-8:
+		return false
+	var start := global_transform
+	move_and_collide(Vector3.UP * step)
+	var lifted := global_position.y - start.origin.y
+	move_and_collide(horiz)
+	var moved := Vector2(global_position.x - start.origin.x, global_position.z - start.origin.z).length()
+	var down := move_and_collide(Vector3.DOWN * (lifted + 0.05))
+	if moved > 0.001 and down != null and _is_floor_collision(down) and global_position.y >= start.origin.y - 0.001:
+		return true
+	global_transform = start
 	return false
 
 
+## 上下移動: 平らなステージは y=半径に固定。高低差があれば、接地中は段差ぶんまで地面に吸着し、
+## 足場がなければ重力で落ちる(スロープや天面の縁から自由に落ちられる)。
+func _update_vertical(delta: float) -> void:
+	if not Stage.has_elevation():
+		position.y = _radius()
+		_vy = 0.0
+		_on_ground = true
+		return
+	if global_position.y < _radius() * 0.5:
+		global_position.y = _radius() # 地面(y=0)より下に置かれた(生成・テスト配置)場合は地上へ
+	if _on_ground:
+		var snap := move_and_collide(Vector3.DOWN * Config.balance.step_height, true)
+		if snap != null and _is_floor_collision(snap):
+			global_position += snap.get_travel()
+			_vy = 0.0
+			return
+		_on_ground = false
+		_vy = 0.0
+	_vy -= Config.balance.fall_gravity * delta
+	var motion := Vector3(0.0, _vy * delta, 0.0)
+	for _i in 2:
+		var col := move_and_collide(motion)
+		if col == null:
+			return
+		if _is_floor_collision(col):
+			_on_ground = true
+			_vy = 0.0
+			return
+		# 急斜面や他プレイヤーの上: 面に沿って滑り落ちる
+		motion = col.get_remainder().slide(col.get_normal())
+
+
+## --- 入力(NpcBeetle が上書きする) ---
+
+func _dash_input_held() -> bool:
+	return PlayerInput.dash_held(input_device)
+
+
 func _read_move() -> Vector2:
-	var v := Vector2.ZERO
-	if input_device == -1:
-		v = _arrows_vector()       # キーボード矢印(生キー。ui_*はjoypadも拾うため使わない)
-	elif input_device == -2:
-		v = _wasd_vector()
-	elif input_device >= 0 and input_device < 9000:
-		v = _joypad_vector(input_device)
-	if input_rotation_deg != 0.0:  # 追加の微調整オフセット(既定0)
-		v = v.rotated(deg_to_rad(input_rotation_deg))
-	return v
+	return PlayerInput.read_move(input_device, input_rotation_deg)
+
+
+## 入力方向(水平・正規化)。入力が小さければ ZERO。
+func _move_input_dir() -> Vector3:
+	var iv := _read_move()
+	var dir := Vector3(iv.x, 0.0, iv.y)
+	return dir.normalized() if dir.length() > PlayerInput.MOVE_THRESHOLD else Vector3.ZERO
 
 
 ## --- SE ---
 
-func _build_audio() -> void:
-	_hit_audio = _create_audio_player("HitSE", HIT_SE)
-	_wall_hit_audio = _create_audio_player("WallHitSE", WALL_HIT_SE)
-	_charge_audio = _create_audio_player("ChargeSE", CHARGE_SE)
-	_dash_audio = _create_audio_player("DashSE", DASH_SE)
-	_get_neutral_audio = _create_audio_player("GetNeutralSE", GET_NEUTRAL_SE)
-	_get_high_audio = _create_audio_player("GetHighSE", GET_HIGH_SE)
-	_get_high_high_audio = _create_audio_player("GetHighHighSE", GET_HIGH_HIGH_SE)
-	_get_neutral_audio.max_polyphony = 4
-	_get_high_audio.max_polyphony = 4
-	_get_high_high_audio.max_polyphony = 4
-	_charge_audio.finished.connect(_on_charge_audio_finished)
-
-
-func _create_audio_player(node_name: String, stream: AudioStream) -> AudioStreamPlayer:
-	var player := AudioStreamPlayer.new()
-	player.name = node_name
-	player.stream = stream
-	add_child(player)
-	return player
-
-
 func _play_audio(player: AudioStreamPlayer) -> void:
-	if not gameplay_active or player == null:
-		return
-	player.stop()
-	player.play()
-
-
-## 密集したフンを連続取得した場合も、直前の取得音を打ち切らず重ねて鳴らす。
-func _play_audio_overlapping(player: AudioStreamPlayer) -> void:
-	if gameplay_active and player != null:
-		player.play()
-
-
-func _play_charge_audio() -> void:
-	_play_audio(_charge_audio)
+	if gameplay_active:
+		PlayerAudio.restart(player)
 
 
 func _stop_charge_audio() -> void:
-	if _charge_audio != null:
-		_charge_audio.stop()
+	if _audio != null:
+		_audio.stop_charge()
 
 
 ## 音源の末尾まで到達しても溜め中なら、発動まで繰り返す。
 func _on_charge_audio_finished() -> void:
 	if gameplay_active and state == State.DASH_CHARGING:
-		_charge_audio.play()
-
-## SDL mini-gamepadモードはL/Rどちらも横持ち補正済みの左スティック軸として公開する。
-func _joypad_vector(dev: int) -> Vector2:
-	var v := Vector2(
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y)
-	)
-	if v.length() < STICK_DEADZONE:
-		return Vector2.ZERO
-	return v
-
-func _arrows_vector() -> Vector2:
-	var x := (1.0 if Input.is_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_key_pressed(KEY_LEFT) else 0.0)
-	var y := (1.0 if Input.is_key_pressed(KEY_DOWN) else 0.0) - (1.0 if Input.is_key_pressed(KEY_UP) else 0.0)
-	return Vector2(x, y)
-
-func _wasd_vector() -> Vector2:
-	var x := (1.0 if Input.is_key_pressed(KEY_D) else 0.0) - (1.0 if Input.is_key_pressed(KEY_A) else 0.0)
-	var y := (1.0 if Input.is_key_pressed(KEY_S) else 0.0) - (1.0 if Input.is_key_pressed(KEY_W) else 0.0)
-	return Vector2(x, y)
+		_audio.charge.play()
 
 
 ## --- 見た目 ---
@@ -641,7 +764,7 @@ func _radius() -> float:
 
 
 func _build_visual() -> void:
-	var col: Color = PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
+	var col := color_for(player_id)
 
 	_ball_shape = SphereShape3D.new()
 	var ball_col := CollisionShape3D.new()
@@ -652,75 +775,35 @@ func _build_visual() -> void:
 	_ball_mi = MeshInstance3D.new()
 	_ball_mi.name = "DungBall"
 	_ball_mi.mesh = _ball_mesh
-	_ball_mat = StandardMaterial3D.new()
-	_ball_mat.albedo_color = DUNG_COLOR
+	_ball_color = col
+	_ball_mat = ToonMaterial.create(_ball_color)
 	_ball_mi.material_override = _ball_mat
 	add_child(_ball_mi)
 
-	_build_beetle_visual(col)
-	_build_dash_arrow(col)
-
-	_crown = Label3D.new()
-	_crown.name = "LeaderCrown"
-	_crown.text = "👑"
-	_crown.font_size = 96
-	_crown.pixel_size = 0.012
-	_crown.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_crown.no_depth_test = true
-	_crown.outline_size = 10
-	var emoji_font := SystemFont.new()
-	emoji_font.font_names = PackedStringArray(["Segoe UI Emoji", "Noto Color Emoji"])
-	_crown.font = emoji_font
-	_crown.visible = false
+	# 全身をフン球と同じ色で塗る(点滅で色を書き換えるため、マテリアルは個体ごと)。
+	_beetle = BeetleModel.create(self, col)
+	for mat in _beetle.materials:
+		_beetle_base_colors.append(mat.albedo_color)
+	_dash_arrow = DashArrow.new(col)
+	add_child(_dash_arrow)
+	_speed_lines = DASH_LINES_FX.instantiate() as EffectPlayer
+	_speed_lines.name = "DashLines"
+	add_child(_speed_lines)
+	_blackhole_swirl = BLACKHOLE_FX.instantiate() as EffectPlayer
+	_blackhole_swirl.name = "BlackholeSwirl"
+	add_child(_blackhole_swirl)
+	_speed_boost_lines = DashSpeedLines.new()
+	_speed_boost_lines.name = "SpeedBoostLines"
+	_speed_boost_lines.setup_rising()
+	add_child(_speed_boost_lines)
+	_afterimage = AfterimageTrail.new()
+	_afterimage.name = "Afterimage"
+	var ghost_targets: Array[MeshInstance3D] = [_ball_mi]
+	ghost_targets.append_array(_beetle.meshes)
+	_afterimage.setup(ghost_targets, col)
+	add_child(_afterimage)
+	_crown = LeaderCrown.new()
 	add_child(_crown)
-
-
-func _build_beetle_visual(player_color: Color) -> void:
-	_beetle = Node3D.new()
-	_beetle.name = "Beetle"
-	add_child(_beetle)
-	_beetle_model = BEETLE_SCENE.instantiate() as Node3D
-	_beetle_model.name = "Model"
-	_beetle.add_child(_beetle_model)
-	# GLBの頭は-Z、腹は+Z。サイズは基準姿勢で測り、頭下げの角度と分離する。
-	_beetle_model.rotation.x = deg_to_rad(-BEETLE_SIZE_REFERENCE_DEGREES)
-	for node in _beetle_model.find_children("*", "MeshInstance3D", true, false):
-		var part := node as MeshInstance3D
-		_beetle_meshes.append(part)
-		for surface in part.mesh.get_surface_count():
-			# GLBの共有マテリアルを書き換えず、プレイヤーごとに色と点滅を保持する。
-			var mat := part.get_active_material(surface).duplicate() as StandardMaterial3D
-			if mat.resource_name == "Wing_Image":
-				mat.albedo_color = player_color
-			part.set_surface_override_material(surface, mat)
-			_beetle_materials.append(mat)
-			_beetle_base_colors.append(mat.albedo_color)
-	var bounds := _beetle_visual_bounds()
-	var visual_scale := BEETLE_REFERENCE_LENGTH * BEETLE_VISUAL_SIZE_RATIO / bounds.size.z
-	_beetle_model.scale = Vector3.ONE * visual_scale
-	_beetle_model.rotation.x = deg_to_rad(-BEETLE_HEAD_DOWN_DEGREES)
-	bounds = _beetle_visual_bounds()
-	# 傾けた後の足先を地面へ合わせ、腹側の張り出しに応じて球との間隔を取る。
-	_beetle_model.position.y = -bounds.position.y + 0.005
-	_beetle_rear_extent = bounds.end.z
-
-
-## 回転前のBeetleローカル空間で、脚まで含めた実頂点の範囲を測る。
-func _beetle_visual_bounds() -> AABB:
-	var bounds := AABB()
-	var has_point := false
-	for part in _beetle_meshes:
-		var to_beetle := _beetle.global_transform.affine_inverse() * part.global_transform
-		for surface in part.mesh.get_surface_count():
-			var vertices: PackedVector3Array = part.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]
-			for vertex in vertices:
-				var point := to_beetle * vertex
-				if not has_point:
-					bounds = AABB(point, Vector3.ZERO)
-					has_point = true
-				else:
-					bounds = bounds.expand(point)
-	return bounds
 
 
 func _apply_size_visual() -> void:
@@ -728,95 +811,67 @@ func _apply_size_visual() -> void:
 	_ball_mesh.radius = r
 	_ball_mesh.height = r * 2.0
 	_ball_shape.radius = r
-	position.y = r
+	if Stage.has_elevation() and _applied_radius >= 0.0:
+		position.y += r - _applied_radius # 足元の高さを保つ(台の上でも沈まない)
+	else:
+		position.y = r
+	_applied_radius = r
 	if _crown != null:
-		_crown.position = Vector3(0, r + 1.0, 0)
+		_crown.fit_to_ball(r)
 	_update_beetle()
 
 
+## フンコロガシを球の後ろ(向きの反対側)に置き、状態に応じて点滅・灰色にする。
 func _update_beetle() -> void:
 	var r := _radius()
 	var direction := Vector3(facing.x, 0.0, facing.z).normalized()
 	if direction.is_zero_approx():
 		direction = Vector3.FORWARD
-	_beetle.position = -direction * (r + _beetle_rear_extent + BEETLE_BALL_GAP) + Vector3(0, -r, 0)
-	_beetle.rotation.y = atan2(direction.x, direction.z)
-	var flash_on := _windup_flash_on()
-	for i in _beetle_materials.size():
-		var color := _state_tint() if state == State.STUNNED else _beetle_base_colors[i]
-		_beetle_materials[i].albedo_color = WINDUP_FLASH_COLOR if flash_on else color
+	_beetle.root.position = -direction * _beetle.distance_from_ball(r) + Vector3(0, -r, 0)
+	_beetle.root.rotation.y = atan2(direction.x, direction.z)
+	var flash_on := _flash_on()
+	var stunned := state == State.STUNNED
+	for i in _beetle.materials.size():
+		var color := STUN_COLOR if stunned else _beetle_base_colors[i]
+		_beetle.materials[i].albedo_color = WINDUP_FLASH_COLOR if flash_on else color
 	if _ball_mat != null:
-		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else DUNG_COLOR
+		_ball_mat.albedo_color = WINDUP_FLASH_COLOR if flash_on else _ball_color
 
 
-## 足元に平たい矢印(+Z向き)。軸は長さに合わせて伸ばし、先端は固定サイズで先に置く。
-func _build_dash_arrow(player_color: Color) -> void:
-	_dash_arrow = Node3D.new()
-	_dash_arrow.name = "DashArrow"
-	_dash_arrow.visible = false
-	add_child(_dash_arrow)
-	_dash_arrow_mat = StandardMaterial3D.new()
-	_dash_arrow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_dash_arrow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_dash_arrow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_dash_arrow_mat.albedo_color = player_color
-	var shaft_mesh := PlaneMesh.new()
-	shaft_mesh.size = Vector2(DASH_ARROW_WIDTH, 1.0)
-	_dash_arrow_shaft = MeshInstance3D.new()
-	_dash_arrow_shaft.name = "Shaft"
-	_dash_arrow_shaft.mesh = shaft_mesh
-	_dash_arrow_shaft.material_override = _dash_arrow_mat
-	_dash_arrow_shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_dash_arrow.add_child(_dash_arrow_shaft)
-	var head_mesh := ArrayMesh.new()
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
-		Vector3(-DASH_ARROW_HEAD * 0.5, 0, 0), Vector3(0, 0, DASH_ARROW_HEAD), Vector3(DASH_ARROW_HEAD * 0.5, 0, 0),
-	])
-	head_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_dash_arrow_head = MeshInstance3D.new()
-	_dash_arrow_head.name = "Head"
-	_dash_arrow_head.mesh = head_mesh
-	_dash_arrow_head.material_override = _dash_arrow_mat
-	_dash_arrow_head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_dash_arrow.add_child(_dash_arrow_head)
+## 突進無敵中(減速に入るまで)だけ加速線を出す。突進加速中は出さない。
+func _update_speed_lines() -> void:
+	if _speed_lines == null:
+		return
+	var active := gameplay_active and is_dash_invincible() and _dash_t < _dash_duration
+	var r := _radius()
+	if active:
+		_speed_lines.fit_radius(r)
+		_speed_lines.set_direction(_dash_dir)
+	_speed_lines.set_active(active)
+	# 止めた後も粒が寿命まで残るので、残りが寿命の半分を切ったら先に止める(効果が切れる頃に消えきる)。
+	var blackhole := is_blackhole_active() and _blackhole_t > _blackhole_swirl.max_lifetime() * 0.5
+	if blackhole:
+		_blackhole_swirl.fit_radius(r)
+	_blackhole_swirl.set_active(blackhole)
+	_speed_boost_lines.update_rising(is_speed_boost_active(), _radius())
+	_afterimage.set_active(is_speed_boost_active())
 
 
-## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。最大溜めで金色になる。
+## 溜め中だけ、フン球の前縁から向いている方向へ矢印を伸ばす。
 func _update_dash_arrow() -> void:
 	if _dash_arrow == null:
 		return
-	_dash_arrow.visible = state == State.DASH_CHARGING and gameplay_active
-	if not _dash_arrow.visible:
-		return
-	var r := _radius()
-	var ratio := _charge_ratio()
-	var length := lerpf(DASH_ARROW_MIN_LENGTH, DASH_ARROW_MAX_LENGTH, ratio)
-	_dash_arrow.position = Vector3(0, -r + 0.04, 0)
-	_dash_arrow.rotation.y = atan2(facing.x, facing.z)
-	_dash_arrow_shaft.scale = Vector3(1, 1, length)
-	_dash_arrow_shaft.position = Vector3(0, 0, r + length * 0.5)
-	_dash_arrow_head.position = Vector3(0, 0, r + length)
-	var base: Color = PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
-	var color := base.lerp(DASH_ARROW_FULL_COLOR, ratio)
-	color.a = 0.85
-	_dash_arrow_mat.albedo_color = color
+	if state == State.DASH_CHARGING and gameplay_active:
+		_dash_arrow.show_charge(facing, _radius(), _charge_ratio())
+	else:
+		_dash_arrow.visible = false
 
 
-## 状態に応じた本体の色。前隙=白で予備動作を予告 / スタン=灰。
-func _state_tint() -> Color:
-	match state:
-		State.STUNNED:
-			return Color(0.4, 0.4, 0.4)
-		_:
-			return PLAYER_COLORS[player_id % PLAYER_COLORS.size()]
-
-
-func _windup_flash_on() -> bool:
-	if state != State.DASH_CHARGING:
-		return false
-	return int(_charge_t / WINDUP_FLASH_INTERVAL) % 2 == 0
+## 溜め中だけゆっくり点滅する(突進加速中・突進無敵中は点滅しない)。
+func _flash_on() -> bool:
+	if state == State.DASH_CHARGING:
+		return int(_charge_t / CHARGE_FLASH_INTERVAL) % 2 == 0
+	return false
 
 
 func _roll_ball(delta: float) -> void:

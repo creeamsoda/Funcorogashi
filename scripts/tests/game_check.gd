@@ -21,7 +21,8 @@ func _ready() -> void:
 		pickups = dung.get_child_count()
 
 	gm.time_left = 0.2
-	await get_tree().create_timer(1.0).timeout
+	# 結果発表の全シーケンス完了後にボタンが操作可能になる。
+	await get_tree().create_timer(8.0).timeout
 
 	var results_ui := 0
 	var retry_button: Button = null
@@ -32,7 +33,7 @@ func _ready() -> void:
 
 	var res_arr: Array = ended["results"]
 	var retry_ok := retry_button != null \
-		and retry_button.text == "RETRY" \
+		and retry_button.text == "リトライ" \
 		and retry_button.has_focus()
 	var ok: bool = gm.players.size() == Config.balance.player_count \
 		and ended["hit"] and res_arr.size() == Config.balance.player_count \

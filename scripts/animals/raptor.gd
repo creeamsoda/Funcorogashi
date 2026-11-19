@@ -15,7 +15,8 @@ var _age := 0.0
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
-	_make_box(Vector3(0.6, 0.6, 1.4), Color(0.30, 0.55, 0.30))
+	var body := _make_box(Vector3(0.6, 0.6, 1.4), Color(0.30, 0.55, 0.30))
+	body.visible = Config.balance.bird_raptor_visible # 画面の情報量を減らすため既定は非表示
 	if begin_solo():
 		return
 	_rng.randomize()
@@ -29,6 +30,10 @@ func _setup_entry() -> void:
 		1: position = Vector3(HX + ENTER_OFFSET, 0.4, _rng.randf_range(-HZ * 0.5, HZ * 0.5))
 		2: position = Vector3(_rng.randf_range(-HX * 0.5, HX * 0.5), 0.4, HZ + ENTER_OFFSET)
 		_: position = Vector3(_rng.randf_range(-HX * 0.5, HX * 0.5), 0.4, -(HZ + ENTER_OFFSET))
+	var stage := get_tree().get_first_node_in_group("stage") as Stage
+	if stage != null and stage.is_circle(): # 円形アリーナ: 同じ方角の円の外から入る
+		var out := Vector2(position.x, position.z).normalized() * (stage.arena_radius() + ENTER_OFFSET)
+		position = Vector3(out.x, position.y, out.y)
 	var target := Vector3(_rng.randf_range(-HX * 0.5, HX * 0.5), 0.4, _rng.randf_range(-HZ * 0.5, HZ * 0.5))
 	var dir := target - position
 	dir.y = 0.0
@@ -59,7 +64,15 @@ func _bounce() -> void:
 	if _bounces_left <= 0:
 		return
 	var hit := false
-	if position.x > HX - 0.5:
+	var stage := get_tree().get_first_node_in_group("stage") as Stage
+	if stage != null and stage.is_circle():
+		var n := Stage.arena_outward_normal(position, 0.5)
+		if n != Vector3.ZERO: # 円形アリーナ: 円周で反射
+			position = Stage.clamp_to_arena(position, 0.5)
+			if _vel.dot(n) > 0.0:
+				_vel -= n * 2.0 * _vel.dot(n)
+			hit = true
+	elif position.x > HX - 0.5:
 		position.x = HX - 0.5
 		_vel.x = -absf(_vel.x)
 		hit = true
@@ -67,7 +80,9 @@ func _bounce() -> void:
 		position.x = -(HX - 0.5)
 		_vel.x = absf(_vel.x)
 		hit = true
-	if position.z > HZ - 0.5:
+	if stage != null and stage.is_circle():
+		pass
+	elif position.z > HZ - 0.5:
 		position.z = HZ - 0.5
 		_vel.z = -absf(_vel.z)
 		hit = true
@@ -90,7 +105,7 @@ func _next_gap() -> float:
 	return _rng.randf_range(Config.balance.raptor_drop_gap_min, Config.balance.raptor_drop_gap_max)
 
 func _inside() -> bool:
-	return absf(position.x) < HX - 0.5 and absf(position.z) < HZ - 0.5
+	return Stage.is_inside_arena(position, 0.5)
 
 func _out() -> bool:
 	return absf(position.x) > HX + EXIT_MARGIN or absf(position.z) > HZ + EXIT_MARGIN

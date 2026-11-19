@@ -1,11 +1,39 @@
-[gd_resource type="Resource" script_class="BalanceConfig" format=3 uid="uid://b4ietusci5hnb"]
+[gd_resource type="Resource" script_class="BalanceConfig" format=3 uid="uid://cqfxjbs4cukbb"]
 
 [ext_resource type="Script" uid="uid://qxb43s3q3d2e" path="res://scripts/balance_config.gd" id="1_balance"]
 
 [resource]
 script = ExtResource("1_balance")
+match_duration = 120.0
+floor_color = Color(0.56078434, 0.43137255, 0.23529412, 1)
+rock_color = Color(0.56078434, 0.43137255, 0.23529412, 1)
+boost_pad_line_color = Color(0.9064295, 0.75025284, 0.52199423, 1)
+boost_pad_line_spacing = 1.1000000000000227
+boost_pad_line_width = 0.4500000000000455
+boost_pad_line_speed = 3.0
 size_visual_mode = 2
 size_gain_per_pickup = 1.0
 size_log_strength = 0.75
+size_to_scale = 0.2999999999999545
+dash_accel_size_slope = 0.0099999999999909
+dash_accel_time = 0.25
 drop_scatter_radius = 7.0
+flee_static_max_size = 0.6000000000000227
+flee_surprise_time = 0.25
+flee_speed = 9.0
+flee_moving_alert_radius = 0.5
+flee_wall_escape_radius = 8.0
+special_effect_time = 15.0
+blackhole_radius = 4.0
+afterimage_interval = 0.10000000000002274
+afterimage_fade_in = 0.05999999999994543
+afterimage_lifetime = 0.2999999999999545
+afterimage_alpha = 0.6
+special_flee_speed = 13.0
+special_wander_distance_min = 5.0
+special_wander_distance_max = 10.0
+bird_drop_count = 2
 raptor_speed = 15.0
+raptor_leg_drop_max = 2
+orangutan_throw_count = 4
+orangutan_hit_effect = 1

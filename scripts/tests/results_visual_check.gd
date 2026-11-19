@@ -120,7 +120,16 @@ func _check_models() -> bool:
 			push_error("Result beetle has no wing material.")
 			return false
 		var expected_color: Color = Player.PLAYER_COLORS[contestant.player_id]
-		var colors_ok := material.albedo_color.is_equal_approx(expected_color) and material.albedo_texture != null
+		# 全身(全部位・全サーフェス)がテクスチャなしのプレイヤー色一色。
+		var colors_ok := true
+		for part in meshes:
+			for surface in part.mesh.get_surface_count():
+				var part_mat := part.get_active_material(surface) as StandardMaterial3D
+				colors_ok = colors_ok and part_mat != null and part_mat.albedo_texture == null \
+					and part_mat.albedo_color.is_equal_approx(expected_color)
+		# フン球も本編と同じくプレイヤー色。
+		var ball_mat := ball.material_override as StandardMaterial3D
+		colors_ok = colors_ok and ball_mat != null and ball_mat.albedo_color.is_equal_approx(expected_color)
 		for other in wing_materials:
 			colors_ok = colors_ok and material != other
 		wing_materials.append(material)

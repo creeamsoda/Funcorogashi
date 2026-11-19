@@ -37,6 +37,7 @@ func _throw_one() -> void:
 	if parent == null:
 		return
 	var target := Vector3(_rng.randf_range(-HX * 0.7, HX * 0.7), 0.0, _rng.randf_range(-HZ * 0.6, HZ * 0.6))
+	target = Stage.clamp_to_arena(target, 1.5) # 円形アリーナでも壁の内側へ
 	var actual_size := 1.0 * Config.balance.animal_dung_amount_multiplier
 	var td := ThrownDung.create(global_position + Vector3(0, 0.6, 0), target, actual_size)
 	parent.add_child(td)

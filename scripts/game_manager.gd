@@ -10,6 +10,18 @@ const SPAWN_SPOTS := [
 ]
 const SPAWN_SPOTS_2P := [Vector3(-9, 0, 0), Vector3(9, 0, 0)] ## 2人は左右中央に対称配置
 const CROWN_HIDE_TIME := 30.0
+## 対戦開始の演出: 画面が切り替わった瞬間から動けるが、時計は「スタート！」表示から進める。
+const INTRO_TEXT := "フンを一番でっかくしよう！"
+const INTRO_FONT_SIZE := 84
+const INTRO_TIME := 1.5
+const START_TEXT := "スタート！"
+const START_FONT_SIZE := 180
+const START_SHOW_TIME := 1.0
+## 試合中に集計して結果に載せる成績(結果画面の表彰に使う)。
+const STAT_KEYS := [
+	"dash_hits", "dash_hits_received", "dash_drop_amount",
+	"pickups", "special_pickups", "wall_crashes", "boost_pads",
+]
 
 @export_enum("session", "versus", "solo") var mode := "session"
 @export var record_scores := true
@@ -20,9 +32,11 @@ var score_profile := ""
 var final_results: Array = []
 var npc_hit_counts: Dictionary = {}
 var players: Array[Player] = []
-var stats := {}          ## player_id -> {dash_hits:int, pickups:int}
+## player_id -> 結果画面の表彰用の集計(STAT_KEYS 参照)
+var stats := {}
 var time_left := 0.0
 var _running := false
+var _clock_started := true
 var _dung: Node3D
 var _hud: Hud
 var _crown_hidden := false
@@ -35,8 +49,11 @@ var _run_id := ""
 func _ready() -> void:
 	# 時計を先に更新し、期限を迎えた物理tickでは成長・衝突を受け付けない。
 	process_physics_priority = -100
+	# タイトル/チュートリアルから来た対戦だけ開始演出を出す(テストが mode を直接指定した場合は出さない)。
+	var play_intro := false
 	if mode == "session":
 		mode = MatchSession.mode
+		play_intro = mode == "versus"
 	if mode == "solo":
 		if course == null:
 			course = MatchSession.load_course()
@@ -67,6 +84,8 @@ func _ready() -> void:
 	_spawn_players()
 	_update_leader_crown()
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
+	if mode != "solo" and PlayerSlots.is_active():
+		PlayerSlots.assigned.connect(_on_slot_assigned)
 
 	if mode == "solo":
 		_director = SoloDirector.new()
@@ -91,35 +110,94 @@ func _ready() -> void:
 	_running = true
 	if _director != null:
 		_director.advance_to(0.0)
+	if play_intro:
+		_play_intro()
+
+
+func _play_intro() -> void:
+	_clock_started = false
+	_hud.show_banner(INTRO_TEXT, INTRO_FONT_SIZE)
+	await get_tree().create_timer(INTRO_TIME, false).timeout
+	if not is_inside_tree() or not _running:
+		return
+	_hud.show_banner(START_TEXT, START_FONT_SIZE)
+	_clock_started = true
+	await get_tree().create_timer(START_SHOW_TIME, false).timeout
+	if is_inside_tree():
+		_hud.hide_banner()
+
+
+## 対戦の人数。タイトルで選んだ人数(PlayerSlots)があればそれ、無ければ接続台数から決める。
+static func versus_player_count() -> int:
+	if PlayerSlots.is_active():
+		return PlayerSlots.count
+	return InputRouter.versus_player_count(clampi(Config.balance.player_count, 1, 4))
+
+
+## 対戦の入力デバイス(プレイヤーindex順)。
+static func versus_devices(n: int) -> Array[int]:
+	var out: Array[int] = []
+	if PlayerSlots.is_active():
+		for i in n:
+			out.append(PlayerSlots.device_for(i))
+	else:
+		out = InputRouter.devices(n)
+	return out
+
+
+## n人の初期位置。2人は左右中央、それ以外はステージ指定(あれば)か四隅。
+static func spawn_spots_for(n: int, stage: Stage) -> Array:
+	if n == 2:
+		return SPAWN_SPOTS_2P
+	if stage != null and stage.layout != null and stage.layout.spawn_spots.size() >= n:
+		return stage.layout.spawn_spots
+	return SPAWN_SPOTS
 
 
 func _spawn_players() -> void:
-	var n: int = 1 if mode == "solo" else InputRouter.versus_player_count(clampi(Config.balance.player_count, 1, 4))
-	var srcs := InputRouter.sources(n)
-	var spots: Array = SPAWN_SPOTS_2P if n == 2 else SPAWN_SPOTS
+	var n: int = 1 if mode == "solo" else versus_player_count()
+	var devices: Array[int] = InputRouter.devices(n) if mode == "solo" else versus_devices(n)
+	var spots: Array = spawn_spots_for(n, get_tree().get_first_node_in_group("stage") as Stage)
 	for i in n:
 		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
 		p.player_id = i
-		p.input_device = srcs[i]["device"]
+		p.input_device = devices[i]
 		if mode == "solo":
 			p.set_scatter_seed(173 + i)
 		_world.add_child(p)
 		p.global_position = course.player_start if mode == "solo" else spots[i % spots.size()]
 		p.suppress_dash_until_release()
 		players.append(p)
-		stats[i] = {"dash_hits": 0, "pickups": 0}
+		stats[i] = {}
+		for key in STAT_KEYS:
+			stats[i][key] = 0.0 if key == "dash_drop_amount" else 0
 		p.size_changed.connect(_on_size_changed)
 		p.dash_hit.connect(_on_dash_hit)
+		p.dash_drop_caused.connect(_on_dash_drop_caused)
+		p.dung_picked_up.connect(_on_dung_picked_up)
+		p.wall_crashed.connect(func(pid: int) -> void: _add_stat(pid, "wall_crashes", 1))
+		p.boost_pad_entered.connect(func(pid: int) -> void: _add_stat(pid, "boost_pads", 1))
 		_log_assignment(p)
 
 
 func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
+	# 先着順の割り当ては PlayerSlots が管理する(assigned で届く)。
+	if mode != "solo" and PlayerSlots.first_come:
+		return
 	# 起動後にコントローラが増減したら割り当てを更新(起動直後の列挙漏れ対策)
-	var srcs := InputRouter.sources(players.size())
+	var devices: Array[int] = InputRouter.devices(players.size()) if mode == "solo" else versus_devices(players.size())
 	for i in players.size():
-		players[i].input_device = srcs[i]["device"]
+		players[i].input_device = devices[i]
 		players[i].suppress_dash_until_release()
 		_log_assignment(players[i])
+
+
+func _on_slot_assigned(slot: int, _device: int) -> void:
+	if slot < 0 or slot >= players.size():
+		return
+	players[slot].input_device = PlayerSlots.device_for(slot)
+	players[slot].suppress_dash_until_release()
+	_log_assignment(players[slot])
 
 func _log_assignment(p: Player) -> void:
 	var label := "idle"
@@ -127,7 +205,7 @@ func _log_assignment(p: Player) -> void:
 		label = "keyboard-arrows"
 	elif p.input_device == -2:
 		label = "keyboard-WASD"
-	elif p.input_device >= 0 and p.input_device < 9000:
+	elif InputRouter.is_joypad(p.input_device):
 		label = "joypad%d (%s)" % [p.input_device, Input.get_joy_name(p.input_device)]
 	print("[input] P", p.player_id + 1, " (", label, ")")
 
@@ -135,7 +213,8 @@ func _log_assignment(p: Player) -> void:
 func _physics_process(delta: float) -> void:
 	if not _running:
 		return
-	time_left = maxf(0.0, time_left - delta)
+	if _clock_started: # 開始演出の間は時計を止める(動くことはできる)
+		time_left = maxf(0.0, time_left - delta)
 	elapsed = duration - time_left
 	if not _crown_hidden and time_left <= CROWN_HIDE_TIME:
 		_crown_hidden = true
@@ -164,9 +243,26 @@ func _on_dash_hit(attacker_id: int, victim_id: int) -> void:
 		return
 	if stats.has(attacker_id):
 		stats[attacker_id]["dash_hits"] += 1
-	if mode == "solo" and not stats.has(victim_id) and stats.has(attacker_id):
+	if stats.has(victim_id):
+		stats[victim_id]["dash_hits_received"] += 1
+	elif mode == "solo" and stats.has(attacker_id):
 		npc_hit_counts[victim_id] = int(npc_hit_counts.get(victim_id, 0)) + 1
 		_hud.set_npc_hits(int(stats[attacker_id]["dash_hits"]))
+
+
+func _on_dash_drop_caused(attacker_id: int, amount: float) -> void:
+	_add_stat(attacker_id, "dash_drop_amount", amount)
+
+
+func _on_dung_picked_up(pid: int, special: bool) -> void:
+	_add_stat(pid, "pickups", 1)
+	if special:
+		_add_stat(pid, "special_pickups", 1)
+
+
+func _add_stat(pid: int, key: String, amount: Variant) -> void:
+	if _running and stats.has(pid):
+		stats[pid][key] += amount
 
 
 func _spawn_npc(event: SoloEvent, event_index: int) -> void:
@@ -203,11 +299,9 @@ func _end_match() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	var results: Array = []
 	for p in players:
-		results.append({
-			"player_id": p.player_id,
-			"size": p.size,
-			"dash_hits": stats[p.player_id]["dash_hits"],
-		})
+		var entry := {"player_id": p.player_id, "size": p.size}
+		entry.merge(stats[p.player_id])
+		results.append(entry)
 	final_results = results.duplicate(true)
 	match_ended.emit(results.duplicate(true))
 	if mode == "solo":

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://lrgufdh4ebc1"]
+
+[ext_resource type="Script" uid="uid://cqtm3arulrk1t" path="res://scripts/tests/effect_preview.gd" id="1_prev"]
+
+[node name="EffectPreview" type="Node3D" unique_id=154940517]
+script = ExtResource("1_prev")

@@ -40,7 +40,7 @@ func _ready() -> void:
 	model.rotation = original_rotation
 	var original_dimensions := _bounds_in_space(meshes, beetle.global_transform.affine_inverse()).size
 	var size_ok := absf(reference_dimensions.z - EXPECTED_MODEL_LENGTH) < EPSILON \
-		and is_equal_approx(Player.BEETLE_VISUAL_SIZE_RATIO, 1.2) \
+		and is_equal_approx(BeetleModel.VISUAL_SIZE_RATIO, 1.2) \
 		and is_equal_approx(original_scale.x, original_scale.y) \
 		and is_equal_approx(original_scale.y, original_scale.z)
 	var facing_ok := true

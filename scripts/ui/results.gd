@@ -2,7 +2,9 @@ class_name Results
 extends CanvasLayer
 ## タイムアップ後の結果発表演出。
 ## show_results(results) で表示。results 要素:
-## {player_id:int, size:float, dash_hits_received:int}
+## {player_id:int, size:float, dash_hits:int, dash_hits_received:int, dash_drop_amount:float,
+##  pickups:int, special_pickups:int, wall_crashes:int, boost_pads:int}
+## (成績キーは省略可。無いものは0扱い)
 ## 注: Dictionary の "size" キーは r["size"] で参照(r.size は Dictionary.size() と衝突するため)。
 
 signal presentation_finished
@@ -12,6 +14,21 @@ signal menu_requested
 const RETRY_BUTTON_SIZE := Vector2(300, 64)
 const CONTESTANT_SIZE := ResultContestant.DISPLAY_SIZE
 const OVERLAY_COLOR := Color(0.13, 0.14, 0.16, 0.72)
+## 副賞(成績1位の表彰)。上から順に出す。値が全員0の賞は出さない。同率1位は全員に出す。
+const AWARDS := [
+	{"key": "dash_hits_received", "text": "1番突進を食らった"},
+	{"key": "dash_hits", "text": "1番突進を当てた"},
+	{"key": "dash_drop_amount", "text": "突進で落としたフンの量No.1"},
+	{"key": "pickups", "text": "1番フンを拾った"},
+	{"key": "special_pickups", "text": "1番スペシャル・フンを拾った"},
+	{"key": "wall_crashes", "text": "1番壁にぶつかった"},
+	{"key": "boost_pads", "text": "1番加速板に乗った"},
+]
+## 2人対戦では「食らった」と「当てた」がほぼ裏返しなので、どちらか一方だけ出す。
+const MIRRORED_AWARD_KEYS := ["dash_hits_received", "dash_hits"]
+const AWARD_SIZE := Vector2(250, 30)
+const AWARD_FONT_SIZE := 17
+const AWARD_TOP_MARGIN := 8.0
 
 ## テスト用。通常は1.0。小さくすると演出時間だけを短縮できる。
 var animation_speed_scale := 1.0
@@ -22,7 +39,8 @@ var _announcement: Label
 var _rank_labels: Array[Label] = []
 var _contestants: Array[ResultContestant] = []
 var _contestant_targets: Array[Vector2] = []
-var _award_label: Label
+## 表示する副賞。{text, ranks:Array[int], labels:Array[Label]}
+var _awards: Array = []
 var _retry_button: Button
 var _menu_button: Button
 var _sorted_results: Array = []
@@ -79,15 +97,22 @@ func _build_ui() -> void:
 		_root.add_child(contestant)
 		_contestants.append(contestant)
 
-	_award_label = _label("一番突進を食らった", 21, Color(1.0, 0.91, 0.42))
-	_award_label.name = "MostDashedAward"
-	_award_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_award_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_award_label.size = Vector2(280, 54)
-	_award_label.pivot_offset = _award_label.size * 0.5
-	_award_label.modulate.a = 0.0
-	_award_label.scale = Vector2(0.72, 0.72)
-	_root.add_child(_award_label)
+	_awards = _pick_awards()
+	for award in _awards:
+		var labels: Array[Label] = []
+		for rank in award["ranks"]:
+			var award_label := _label(award["text"], AWARD_FONT_SIZE, Color(1.0, 0.91, 0.42))
+			award_label.name = "Award_%s_%d" % [award["key"], rank + 1]
+			award_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			award_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			award_label.add_theme_constant_override("outline_size", 5)
+			award_label.size = AWARD_SIZE
+			award_label.pivot_offset = AWARD_SIZE * 0.5
+			award_label.modulate.a = 0.0
+			award_label.scale = Vector2(0.72, 0.72)
+			_root.add_child(award_label)
+			labels.append(award_label)
+		award["labels"] = labels
 
 	_retry_button = Button.new()
 	_retry_button.name = "RetryButton"
@@ -106,7 +131,7 @@ func _build_ui() -> void:
 	_retry_button.disabled = true
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_root.add_child(_retry_button)
-	_menu_button = MenuStyle.make_button("モード選択へ")
+	_menu_button = MenuStyle.make_button("タイトルに戻る")
 	_menu_button.name = "MenuButton"
 	_menu_button.size = RETRY_BUTTON_SIZE
 	_menu_button.visible = false
@@ -170,15 +195,26 @@ func _play_sequence() -> void:
 	_start_winner_bounce()
 	await get_tree().create_timer(_scaled(0.34)).timeout
 
-	# 6. 最多被突進プレイヤーの下へ副賞を表示。
-	var most_dashed_rank := _most_dashed_rank()
-	var award_x := _contestant_targets[most_dashed_rank].x + (CONTESTANT_SIZE.x - _award_label.size.x) * 0.5
-	_award_label.position = Vector2(award_x, viewport_size.y - 156.0)
-	var award_tween := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	award_tween.tween_property(_award_label, "modulate:a", 1.0, _scaled(0.28))
-	award_tween.tween_property(_award_label, "scale", Vector2.ONE, _scaled(0.34))
-	await award_tween.finished
-	await get_tree().create_timer(_scaled(0.38)).timeout
+	# 6. 副賞を1種類ずつ、該当プレイヤーの下へ積み上げて表示。
+	var stack_counts: Array[int] = []
+	stack_counts.resize(_contestants.size())
+	stack_counts.fill(0)
+	for award in _awards:
+		var award_tween := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var ranks: Array = award["ranks"]
+		for i in ranks.size():
+			var rank: int = ranks[i]
+			var award_label: Label = award["labels"][i]
+			var award_x := _contestant_targets[rank].x + (CONTESTANT_SIZE.x - AWARD_SIZE.x) * 0.5
+			var award_y := _contestant_targets[rank].y + CONTESTANT_SIZE.y + AWARD_TOP_MARGIN \
+				+ AWARD_SIZE.y * float(stack_counts[rank])
+			stack_counts[rank] += 1
+			award_label.position = Vector2(award_x, award_y)
+			award_tween.tween_property(award_label, "modulate:a", 1.0, _scaled(0.24))
+			award_tween.tween_property(award_label, "scale", Vector2.ONE, _scaled(0.30))
+		await award_tween.finished
+		await get_tree().create_timer(_scaled(0.12)).timeout
+	await get_tree().create_timer(_scaled(0.26)).timeout
 
 	# 7. 最後にリトライボタン。
 	_retry_button.position = Vector2(viewport_size.x * 0.5 - RETRY_BUTTON_SIZE.x - 12.0, viewport_size.y - 78.0)
@@ -218,22 +254,35 @@ func _start_winner_bounce() -> void:
 	bounce.tween_property(winner, "position:y", resting_y, _scaled(0.22)).set_ease(Tween.EASE_IN)
 
 
-func _most_dashed_rank() -> int:
-	var best_rank := 0
-	var best_count := -1
+## 出す副賞と、その受賞者(順位index)を決める。
+func _pick_awards() -> Array:
+	var skipped_key := ""
+	if _sorted_results.size() == 2:
+		skipped_key = MIRRORED_AWARD_KEYS[randi() % MIRRORED_AWARD_KEYS.size()]
+	var picked: Array = []
+	for award in AWARDS:
+		if award["key"] == skipped_key:
+			continue
+		var ranks := _top_ranks(award["key"])
+		if not ranks.is_empty():
+			picked.append({"key": award["key"], "text": award["text"], "ranks": ranks})
+	return picked
+
+
+## key の値が最大(かつ0より大きい)の順位indexを全て返す。
+func _top_ranks(key: String) -> Array[int]:
+	var best := 0.0
+	var ranks: Array[int] = []
 	for i in _sorted_results.size():
-		var count := _dash_hits_received(_sorted_results[i])
-		if count > best_count:
-			best_count = count
-			best_rank = i
-	return best_rank
-
-
-func _dash_hits_received(result: Dictionary) -> int:
-	if result.has("dash_hits_received"):
-		return int(result["dash_hits_received"])
-	# 旧テストデータとの互換用。ゲーム本編は dash_hits_received を渡す。
-	return int(result.get("dash_hits", 0))
+		var value := float(_sorted_results[i].get(key, 0))
+		if value <= 0.0:
+			continue
+		if ranks.is_empty() or value > best + 0.0001:
+			best = value
+			ranks = [i]
+		elif is_equal_approx(value, best) or absf(value - best) <= 0.0001:
+			ranks.append(i)
+	return ranks
 
 
 func _rank_before(a: Dictionary, b: Dictionary) -> bool:
@@ -258,10 +307,7 @@ func _label(text: String, font_size: int, color: Color) -> Label:
 
 
 func _japanese_font() -> Font:
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Yu Gothic UI", "Meiryo UI", "Noto Sans CJK JP", "sans-serif"])
-	font.font_weight = 700
-	return font
+	return MenuStyle.japanese_font()
 
 
 func _button_style(color: Color, border_width: int = 0) -> StyleBoxFlat:
