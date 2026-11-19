@@ -102,7 +102,15 @@ func _kill_pulse(button: Button) -> void:
 		if tween.is_valid():
 			tween.kill()
 
-## 空のクレジットウィンドウ。暗幕の上に中央表示し、ESC / Joy-Con 下ボタン / ×ボタンで閉じる。
+## クレジット表記。[役割, [名前...]]
+const CREDITS := [
+	["企画・イラスト・効果音", ["creeamsoda"]],
+	["プログラム", ["Claude Code", "ChatGPT"]],
+	["効果音", ["効果音ラボ", "On-Jin ～音人～", "Springin’ Sound Stock"]],
+	["3Dモデル", ["ChatGPT"]],
+]
+
+## クレジットウィンドウ。暗幕の上に中央表示し、ESC / Joy-Con 下ボタン / ×ボタンで閉じる。
 func _build_credits(parent: Control) -> void:
 	_credits = Control.new()
 	_credits.name = "Credits"
@@ -146,11 +154,25 @@ func _build_credits(parent: Control) -> void:
 	for side in ["focus_neighbor_top", "focus_neighbor_bottom", "focus_neighbor_left", "focus_neighbor_right", "focus_next", "focus_previous"]:
 		_credits_close.set(side, NodePath("."))
 	header.add_child(_credits_close)
-	# 本文は後で追加する。
 	var body := VBoxContainer.new()
 	body.name = "Body"
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_child(body)
+	# 左に役割、右に名前の2列表。名前が複数あるときは1行ずつ並べる。
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 40)
+	grid.add_theme_constant_override("v_separation", 18)
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	body.add_child(grid)
+	for entry in CREDITS:
+		var role := MenuStyle.make_label(entry[0], 24, MenuStyle.TITLE_BUTTON_BG)
+		role.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		role.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		grid.add_child(role)
+		var names := MenuStyle.make_label("\n".join(PackedStringArray(entry[1])), 26, Color("2b1d12"))
+		grid.add_child(names)
 
 func _open_credits() -> void:
 	_credits.visible = true
