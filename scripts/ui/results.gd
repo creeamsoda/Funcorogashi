@@ -258,10 +258,7 @@ func _label(text: String, font_size: int, color: Color) -> Label:
 
 
 func _japanese_font() -> Font:
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Yu Gothic UI", "Meiryo UI", "Noto Sans CJK JP", "sans-serif"])
-	font.font_weight = 700
-	return font
+	return MenuStyle.japanese_font()
 
 
 func _button_style(color: Color, border_width: int = 0) -> StyleBoxFlat:

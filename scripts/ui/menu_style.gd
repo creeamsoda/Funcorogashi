@@ -9,11 +9,13 @@ const GOLD := Color("f4d36b")
 const GREEN := Color("416c42")
 
 
+## UI 共通の日本語フォント(ふてほど丸ゴシック / OFL 1.1 + M+ FONT LICENSE)。
+## ライセンス文は resources/fonts/ に同梱。
+const JAPANESE_FONT: Font = preload("res://resources/fonts/Futehodo-MaruGothic.ttf")
+
+
 static func japanese_font() -> Font:
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Yu Gothic UI", "Meiryo UI", "Noto Sans CJK JP", "sans-serif"])
-	font.font_weight = 700
-	return font
+	return JAPANESE_FONT
 
 
 static func make_label(text: String, font_size: int = 24, color: Color = TEXT) -> Label:
