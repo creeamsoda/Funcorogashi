@@ -20,3 +20,6 @@ Thumbs.db
 
 # 紹介画像シーン(Showcase.tscn)の F12 スクリーンショット
 /screenshots/
+
+# AIコーディングツールの作業ファイル
+.codex_commit.patch
