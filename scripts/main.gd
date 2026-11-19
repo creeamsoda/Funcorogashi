@@ -276,7 +276,7 @@ func _choose_tutorial(index: int) -> void:
 	MatchSession.start_versus(get_tree(), index == 0)
 
 
-## ESC: チュートリアル選択→人数選択→タイトルの順に戻る。
+## ESC / 横持ち Joy-Con の下ボタン: チュートリアル選択→人数選択→タイトルの順に戻る。
 func _dialog_back() -> void:
 	if _tutorial_dialog.visible:
 		PlayerSlots.end()
@@ -288,7 +288,7 @@ func _dialog_back() -> void:
 
 func _input(event: InputEvent) -> void:
 	if _count_dialog != null and (_count_dialog.visible or _tutorial_dialog.visible):
-		if event is InputEventKey and event.pressed and not event.is_echo() and event.keycode == KEY_ESCAPE:
+		if _is_dialog_back_event(event):
 			get_viewport().set_input_as_handled()
 			_dialog_back()
 			return
@@ -302,6 +302,16 @@ func _input(event: InputEvent) -> void:
 		if button != null and not button.disabled:
 			get_viewport().set_input_as_handled()
 			button.pressed.emit()
+
+## ウィンドウで「戻る」になる入力。ESC か、横持ち Joy-Con の下ボタン
+## (右 Joy-Con の A / 左 Joy-Con の十字キー左。SDL mini-gamepad では BTN 0 = JOY_BUTTON_A)。
+## 決定は右ボタン(JOY_BUTTON_B)なので重ならない。
+func _is_dialog_back_event(event: InputEvent) -> bool:
+	if event.is_echo():
+		return false
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		return true
+	return event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_A
 
 func _is_credits_close_event(event: InputEvent) -> bool:
 	if event.is_echo():
