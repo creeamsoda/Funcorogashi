@@ -1,21 +1,24 @@
 class_name JoyconGuide
 extends Control
-## 横持ちJoy-Con 1本のイラスト(コードで描画)。スティックを指して「移動」、突進ボタンを指して「長押しで突進」。
+## 横持ちJoy-Con 1本のイラスト(resources/Images/joycon.png)。スティックを指して「移動」、突進ボタンを指して「長押しで突進」。
 ## 突進は SDL mini-gamepad の BTN 1(JOY_BUTTON_B)。横持ちで右側に来るボタンとして描く(DASH_BUTTON で変更可)。
 
-const BODY_SIZE := Vector2(300, 120)
-const BODY_COLOR := Color("3cbcf0")
+const JOYCON_TEXTURE: Texture2D = preload("res://resources/Images/joycon.png")
+## 画像(512x196)の表示サイズ。
+const BODY_SIZE := Vector2(340, 340.0 * 196.0 / 512.0)
 const OUTLINE_COLOR := Color.BLACK
-const STICK_COLOR := Color("2b2b2b")
-const BUTTON_COLOR := Color("2b2b2b")
 const HIGHLIGHT_COLOR := Color("ff5a3c")
 const LINE_COLOR := Color.WHITE
 const LABEL_FONT_SIZE := 34
 ## 突進ボタンの位置(フェイスボタンの菱形内: 0=上 1=右 2=下 3=左)。
 const DASH_BUTTON := 1
 const FACE_OFFSETS := [Vector2(0, -1), Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0)]
-const FACE_SPACING := 26.0
-const FACE_RADIUS := 13.0
+## 画像内の部位位置(画像サイズに対する割合)。
+const STICK_UV := Vector2(133.0 / 512.0, 93.0 / 196.0)
+const STICK_RADIUS_UV := 42.0 / 512.0
+const FACE_UV := Vector2(325.0 / 512.0, 93.0 / 196.0)
+const FACE_SPACING_UV := 37.0 / 512.0
+const FACE_RADIUS_UV := 16.0 / 512.0
 
 var _move_label: Label
 var _dash_label: Label
@@ -51,16 +54,20 @@ func _body_rect() -> Rect2:
 
 func _stick_center() -> Vector2:
 	var r := _body_rect()
-	return Vector2(r.position.x + r.size.x * 0.24, r.get_center().y)
+	return r.position + r.size * STICK_UV
 
 
 func _face_center() -> Vector2:
 	var r := _body_rect()
-	return Vector2(r.position.x + r.size.x * 0.74, r.get_center().y)
+	return r.position + r.size * FACE_UV
+
+
+func _face_radius() -> float:
+	return BODY_SIZE.x * FACE_RADIUS_UV
 
 
 func _dash_button_center() -> Vector2:
-	return _face_center() + FACE_OFFSETS[DASH_BUTTON] * FACE_SPACING
+	return _face_center() + FACE_OFFSETS[DASH_BUTTON] * BODY_SIZE.x * FACE_SPACING_UV
 
 
 func _layout_labels() -> void:
@@ -74,33 +81,18 @@ func _layout_labels() -> void:
 
 
 func _draw() -> void:
-	var r := _body_rect()
-	var body := StyleBoxFlat.new()
-	body.bg_color = BODY_COLOR
-	body.border_color = OUTLINE_COLOR
-	body.set_border_width_all(5)
-	body.set_corner_radius_all(int(BODY_SIZE.y * 0.5))
-	draw_style_box(body, r)
-	# スティック
+	draw_texture_rect(JOYCON_TEXTURE, _body_rect(), false)
 	var stick := _stick_center()
-	draw_circle(stick, 30, OUTLINE_COLOR)
-	draw_circle(stick, 26, STICK_COLOR)
-	draw_circle(stick, 15, Color("444444"))
-	# フェイスボタン(突進ボタンだけ色を付けて点滅)
-	var face := _face_center()
+	# 突進ボタンだけ色を付けて点滅
 	var pulse := 0.5 + 0.5 * sin(_blink_t * TAU * 1.2)
-	for i in FACE_OFFSETS.size():
-		var c: Vector2 = face + FACE_OFFSETS[i] * FACE_SPACING
-		var dash := i == DASH_BUTTON
-		draw_circle(c, FACE_RADIUS + 3, OUTLINE_COLOR)
-		draw_circle(c, FACE_RADIUS, HIGHLIGHT_COLOR.lerp(Color.WHITE, pulse * 0.35) if dash else BUTTON_COLOR)
+	draw_circle(_dash_button_center(), _face_radius(), HIGHLIGHT_COLOR.lerp(Color.WHITE, pulse * 0.35))
 	# 指し示す線(ラベル→部位)
 	if _move_label != null:
 		var from_move := Vector2(_move_label.position.x + _move_label.size.x + 12, stick.y)
-		_draw_pointer(from_move, stick + Vector2(-34, 0))
+		_draw_pointer(from_move, stick + Vector2(-(BODY_SIZE.x * STICK_RADIUS_UV + 4), 0))
 		var dash_c := _dash_button_center()
 		var from_dash := Vector2(_dash_label.position.x - 12, dash_c.y)
-		_draw_pointer(from_dash, dash_c + Vector2(FACE_RADIUS + 6, 0))
+		_draw_pointer(from_dash, dash_c + Vector2(_face_radius() + 6, 0))
 
 
 func _draw_pointer(from: Vector2, to: Vector2) -> void:
