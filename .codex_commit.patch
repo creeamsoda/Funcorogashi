@@ -1,0 +1,282 @@
+diff --git a/scripts/balance_config.gd b/scripts/balance_config.gd
+index 09ccf4b..0000000 100644
+--- a/scripts/balance_config.gd
++++ b/scripts/balance_config.gd
+@@ -52,6 +52,11 @@ func radius_for_size(amount: float, scale: float) -> float:
+ @export var dash_knockback_speed: float = 8.0      ## 相打ち時ノックバック初速
+ @export var dash_knockback_time: float = 0.25      ## ノックバック持続(秒)
+ 
++@export_group("Joy-Con Vibration")
++@export_range(0.0, 1.0, 0.01) var joy_vibration_weak_magnitude: float = 0.25 ## 低周波側の振動強度
++@export_range(0.0, 1.0, 0.01) var joy_vibration_strong_magnitude: float = 0.4 ## 高周波側の振動強度
++@export_range(0.0, 2.0, 0.01) var joy_vibration_duration: float = 0.16       ## 振動時間(秒)
++
+ @export_group("Drop & Pickup")
+ @export var drop_ratio: float = 0.5                ## 被弾/自滅時に本体から切り離す割合
+ @export_range(0.0, 1.0, 0.01) var drop_loss_ratio: float = 0.0 ## 切り離した量のうち地面に残らず消失する割合
+diff --git a/scripts/player.gd b/scripts/player.gd
+index ef13005..0000000 100644
+--- a/scripts/player.gd
++++ b/scripts/player.gd
+@@ -8,6 +8,10 @@ extends CharacterBody3D
+ signal size_changed(player_id: int, size: float)
+ signal dashed(player_id: int)
+ signal dash_hit(attacker_id: int, victim_id: int)
++## 実機振動の発火契機をテスト・演出連携から観測するための通知。
++signal vibration_requested(player_id: int)
++## 共有デバイス上の全プレイヤーが対象ならtrue。一部だけなら誤振動防止のためfalse。
++signal vibration_route_resolved(device: int, allowed: bool)
+ 
+ enum State { ROLLING, DASH_WINDUP, DASHING, STUNNED }
+ 
+@@ -22,13 +26,9 @@ const PLAYER_COLORS := [
+ 	Color(0.95, 0.80, 0.25), # P4 黄
+ ]
+ 
+-## Joy-Con横持ちの補正。左スティック(Lジョイコン)→-90(270)、右スティック(Rジョイコン)→+90。
+-const LEFT_JOYCON_ROT := 270.0
+-const RIGHT_JOYCON_ROT := 90.0
+ const STICK_DEADZONE := 0.2
+-## 突進ボタン(結合ペア): 左ジョイコン=12(DpadDown) / 右ジョイコン=3(Y)。
+-const LEFT_DASH_BUTTON := 12
+-const RIGHT_DASH_BUTTON := 3
++## SDL mini-gamepadモードで報告されるBTN 1を突進に使用する。
++const JOYCON_DASH_BUTTON := JOY_BUTTON_B
+ ## 開発用キーボードの突進キー(矢印P=/, WASD P=Shift)。
+ const ARROWS_DASH_KEY := KEY_SLASH
+ const WASD_DASH_KEY := KEY_SHIFT
+@@ -39,8 +39,7 @@ const DROP_MARGIN := 0.6
+ 
+ @export var player_id: int = 0
+ @export var input_device: int = -1     ## -1=キーボード矢印 / -2=WASD / 0..=Joy-Conデバイスid / その他=待機
+-@export var input_stick: int = 0       ## joypad時のスティック 0=左(Lジョイコン) / 1=右(Rジョイコン)
+-@export var input_rotation_deg: float = 0.0  ## 追加の微調整回転(既定0)
++@export var input_rotation_deg: float = 0.0  ## ドライバ差異に対する手動微調整(通常は0)
+ @export var initial_size: float = -1.0  ## >0 で開始サイズを上書き(スクショ/テスト用)
+ 
+ var size: float = 1.0
+@@ -180,6 +179,7 @@ func _process_dashing(delta: float) -> void:
+ 		if other is Player:
+ 			_resolve_dash_contact(other as Player)
+ 		elif other is Node and (other as Node).is_in_group("wall"):
++			_play_impact_vibrations([self])
+ 			drop_and_stun(true) # 壁激突=自滅
+ 		else:
+ 			_end_dash() # 想定外の障害物はそのまま停止
+@@ -198,17 +198,67 @@ func _resolve_dash_contact(victim: Player) -> void:
+ 		_apply_knockback(away)
+ 		victim._apply_knockback(-away)
++		_play_impact_vibrations([self, victim])
+ 		drop_and_stun()
+ 		victim.drop_and_stun()
+ 	else:
+ 		# 命中: 相手だけドロップ+スタン、自分は無傷
++		_play_impact_vibrations([victim])
+ 		victim.drop_and_stun()
+ 		dash_hit.emit(player_id, victim.player_id)
+ 		_end_dash()
+ 
+ 
++## MVP対象の衝撃を、対象プレイヤーのデバイスごとにまとめて振動させる。
++## 結合ペアなど同じdeviceを複数人が共有する場合、共有者の一部だけを振動させることはできない。
++## 無関係なプレイヤーへの誤振動を避けるため、共有者全員がtargetsに含まれる場合だけ実機振動を許可する。
++func _play_impact_vibrations(targets: Array) -> void:
++	var targets_by_device := {}
++	for node in targets:
++		if not node is Player:
++			continue
++		var target := node as Player
++		target.vibration_requested.emit(target.player_id)
++		if not InputRouter.is_joypad(target.input_device):
++			continue
++		if not targets_by_device.has(target.input_device):
++			targets_by_device[target.input_device] = {}
++		targets_by_device[target.input_device][target.get_instance_id()] = true
++
++	for device_value in targets_by_device:
++		var device := int(device_value)
++		var target_ids: Dictionary = targets_by_device[device]
++		var assigned_ids := {}
++		for node in get_tree().get_nodes_in_group("player"):
++			if node is Player:
++				var assigned := node as Player
++				if not assigned.is_queued_for_deletion() and assigned.input_device == device:
++					assigned_ids[assigned.get_instance_id()] = true
++		var exclusive := assigned_ids.size() == target_ids.size()
++		vibration_route_resolved.emit(device, exclusive)
++		if exclusive:
++			_start_device_vibration(device)
++
++
++## キーボード・待機割当・切断済みjoypadでは呼ばれないデバイス単位の振動処理。
++func _start_device_vibration(device: int) -> void:
++	if not Input.get_connected_joypads().has(device):
++		return
++	if not Input.has_joy_vibration(device):
++		return
++	var weak := clampf(Config.balance.joy_vibration_weak_magnitude, 0.0, 1.0)
++	var strong := clampf(Config.balance.joy_vibration_strong_magnitude, 0.0, 1.0)
++	var duration := maxf(Config.balance.joy_vibration_duration, 0.0)
++	# Godotではduration=0が無期限振動なので、0は設定上の「無効」として扱う。
++	if duration <= 0.0 or (weak <= 0.0 and strong <= 0.0):
++		return
++	Input.start_joy_vibration(
++		device,
++		weak,
++		strong,
++		duration
++	)
++
++
+ func _apply_knockback(dir: Vector3) -> void:
+ 	_kb_vel = dir.normalized() * Config.balance.dash_knockback_speed
+ 	_kb_t = Config.balance.dash_knockback_time
+@@ -287,8 +337,7 @@ func _dash_input_held() -> bool:
+ 	elif input_device == -2:
+ 		return Input.is_key_pressed(WASD_DASH_KEY)
+ 	elif input_device >= 0 and input_device < 9000:
+-		var btn: int = RIGHT_DASH_BUTTON if input_stick == 1 else LEFT_DASH_BUTTON
+-		return Input.is_joy_button_pressed(input_device, btn)
++		return Input.is_joy_button_pressed(input_device, JOYCON_DASH_BUTTON)
+ 	return false
+ 
+ 
+@@ -304,15 +353,16 @@ func _read_move() -> Vector2:
+ 	return v
+ 
+-## 割り当てられたスティック(input_stick)だけを読む。結合ペアは左右を別プレイヤーに割り当てるため。
++## SDL mini-gamepadモードはL/Rどちらも横持ち補正済みの左スティック軸として公開する。
+ func _joypad_vector(dev: int) -> Vector2:
+-	var ax: JoyAxis = JOY_AXIS_RIGHT_X if input_stick == 1 else JOY_AXIS_LEFT_X
+-	var ay: JoyAxis = JOY_AXIS_RIGHT_Y if input_stick == 1 else JOY_AXIS_LEFT_Y
+-	var v := Vector2(Input.get_joy_axis(dev, ax), Input.get_joy_axis(dev, ay))
++	var v := Vector2(
++		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
++		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y)
++	)
+ 	if v.length() < STICK_DEADZONE:
+ 		return Vector2.ZERO
+-	var rot: float = RIGHT_JOYCON_ROT if input_stick == 1 else LEFT_JOYCON_ROT
+-	return v.rotated(deg_to_rad(rot))
++	return v
+ 
+ func _arrows_vector() -> Vector2:
+ 	var x := (1.0 if Input.is_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_key_pressed(KEY_LEFT) else 0.0)
+diff --git a/scripts/tests/dash_check.gd b/scripts/tests/dash_check.gd
+index d889a01..0000000 100644
+--- a/scripts/tests/dash_check.gd
++++ b/scripts/tests/dash_check.gd
+@@ -15,11 +15,13 @@ func _ready() -> void:
+ 	var r_wall := await _test_wall()
+ 	var r_mutual := await _test_mutual()
+ 	var r_loss := await _test_drop_loss()
++	var r_vibration_routing := await _test_shared_device_vibration_routing()
+ 
+-	var ok := r_hit and r_wall and r_mutual and r_loss
++	var ok := r_hit and r_wall and r_mutual and r_loss and r_vibration_routing
+ 	print("[dash_check] result=", ("PASS" if ok else "FAIL"),
+ 		"  hit=", r_hit, " self_crash=", r_wall, " mutual=", r_mutual,
+-		" drop_loss=", r_loss)
++		" drop_loss=", r_loss, " vibration_routing=", r_vibration_routing)
+ 	get_tree().quit(0 if ok else 1)
+ 
+ 
+@@ -31,15 +33,19 @@ func _test_hit() -> bool:
+ 	var atk0: float = atk.size
+ 	var dc0: int = _dung.get_child_count()
+ 	var got := {"hit": false}
++	var vibrations := {"attacker": 0, "victim": 0}
+ 	atk.dash_hit.connect(func(_a: int, _v: int) -> void: got["hit"] = true)
++	atk.vibration_requested.connect(func(_pid: int) -> void: vibrations["attacker"] += 1)
++	vic.vibration_requested.connect(func(_pid: int) -> void: vibrations["victim"] += 1)
+ 	atk.facing = Vector3(1, 0, 0)
+ 	atk._start_dash()
+ 	await _seconds(0.9)
+ 	# 攻撃側は無傷(自分はドロップしない=size減らない。相手の落としたフンを回収して増えるのは仕様どおり)
+ 	var ok: bool = got["hit"] and vic.size < vic0 and atk.size >= atk0 - 0.0001 \
+-		and vic.state == Player.State.STUNNED and _dung.get_child_count() > dc0
++		and vic.state == Player.State.STUNNED and _dung.get_child_count() > dc0 \
++		and vibrations["attacker"] == 0 and vibrations["victim"] == 1
+ 	print("  [hit] atk ", atk0, "->", atk.size, " vic ", vic0, "->", vic.size,
+-		" vic_state=", vic.state, " dashHit=", got["hit"])
++		" vic_state=", vic.state, " dashHit=", got["hit"], " vibration=", vibrations)
+ 	_free([atk, vic])
+ 	await _frames(2)
+ 	return ok
+@@ -49,11 +55,14 @@ func _test_wall() -> bool:
+ 	var p := _mk(0, Vector3(10, 0, 0), Vector3(1, 0, 0))
+ 	await _frames(2)
+ 	var s0: float = p.size
++	var vibrations := {"count": 0}
++	p.vibration_requested.connect(func(_pid: int) -> void: vibrations["count"] += 1)
+ 	p.facing = Vector3(1, 0, 0)
+ 	p._start_dash()
+ 	await _seconds(0.9)
+-	var ok: bool = p.size < s0 and p.state == Player.State.STUNNED
+-	print("  [wall] size ", s0, "->", p.size, " state=", p.state)
++	var ok: bool = p.size < s0 and p.state == Player.State.STUNNED and vibrations["count"] == 1
++	print("  [wall] size ", s0, "->", p.size, " state=", p.state,
++		" vibration=", vibrations["count"])
+ 	_free([p])
+ 	await _frames(2)
+ 	return ok
+@@ -65,15 +74,20 @@ func _test_mutual() -> bool:
+ 	await _frames(2)
+ 	var a0: float = a.size
+ 	var b0: float = b.size
++	var vibrations := {"a": 0, "b": 0}
++	a.vibration_requested.connect(func(_pid: int) -> void: vibrations["a"] += 1)
++	b.vibration_requested.connect(func(_pid: int) -> void: vibrations["b"] += 1)
+ 	a.facing = Vector3(1, 0, 0)
+ 	b.facing = Vector3(-1, 0, 0)
+ 	a._start_dash()
+ 	b._start_dash()
+ 	await _seconds(0.9)
+ 	var ok: bool = a.size < a0 and b.size < b0 \
+-		and a.state == Player.State.STUNNED and b.state == Player.State.STUNNED
++		and a.state == Player.State.STUNNED and b.state == Player.State.STUNNED \
++		and vibrations["a"] == 1 and vibrations["b"] == 1
+ 	print("  [mutual] a ", a0, "->", a.size, " b ", b0, "->", b.size,
+-		" states=", a.state, "/", b.state)
++		" states=", a.state, "/", b.state, " vibration=", vibrations)
+ 	_free([a, b])
+ 	await _frames(2)
+ 	return ok
+@@ -110,6 +124,43 @@ func _test_drop_loss() -> bool:
+ 	return ok
+ 
+ 
++## 同じdeviceを共有する一部だけが対象なら抑止し、共有者全員または専有deviceなら許可する。
++func _test_shared_device_vibration_routing() -> bool:
++	var a := _mk(0, Vector3(-8, 0, 8), Vector3(1, 0, 0))
++	var b := _mk(1, Vector3(0, 0, 8), Vector3(1, 0, 0))
++	var c := _mk(2, Vector3(8, 0, 8), Vector3(1, 0, 0))
++	a.input_device = 42
++	b.input_device = 42
++	c.input_device = 43
++	await _frames(2)
++
++	var routes: Array[bool] = []
++	a.vibration_route_resolved.connect(
++		func(_device: int, allowed: bool) -> void: routes.append(allowed)
++	)
++	a._play_impact_vibrations([a])
++	var shared_single_suppressed := routes == [false]
++	routes.clear()
++	a._play_impact_vibrations([a, b])
++	var shared_all_allowed := routes == [true]
++	routes.clear()
++	a._play_impact_vibrations([c])
++	var exclusive_allowed := routes == [true]
++
++	var ok := shared_single_suppressed and shared_all_allowed and exclusive_allowed
++	print("  [vibration_routing] shared_one=", shared_single_suppressed,
++		" shared_all=", shared_all_allowed, " exclusive=", exclusive_allowed)
++	_free([a, b, c])
++	await _frames(2)
++	return ok
++
++
+ func _mk(pid: int, pos: Vector3, face: Vector3) -> Player:
+ 	var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
+ 	p.player_id = pid
