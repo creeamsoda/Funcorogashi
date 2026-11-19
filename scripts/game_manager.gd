@@ -17,6 +17,11 @@ const INTRO_TIME := 1.5
 const START_TEXT := "スタート！"
 const START_FONT_SIZE := 180
 const START_SHOW_TIME := 1.0
+## 試合中に集計して結果に載せる成績(結果画面の表彰に使う)。
+const STAT_KEYS := [
+	"dash_hits", "dash_hits_received", "dash_drop_amount",
+	"pickups", "special_pickups", "wall_crashes", "boost_pads",
+]
 
 @export_enum("session", "versus", "solo") var mode := "session"
 @export var record_scores := true
@@ -27,7 +32,8 @@ var score_profile := ""
 var final_results: Array = []
 var npc_hit_counts: Dictionary = {}
 var players: Array[Player] = []
-var stats := {}          ## player_id -> {dash_hits:int, dash_hits_received:int, pickups:int}
+## player_id -> 結果画面の表彰用の集計(STAT_KEYS 参照)
+var stats := {}
 var time_left := 0.0
 var _running := false
 var _clock_started := true
@@ -162,9 +168,15 @@ func _spawn_players() -> void:
 		p.global_position = course.player_start if mode == "solo" else spots[i % spots.size()]
 		p.suppress_dash_until_release()
 		players.append(p)
-		stats[i] = {"dash_hits": 0, "dash_hits_received": 0, "pickups": 0}
+		stats[i] = {}
+		for key in STAT_KEYS:
+			stats[i][key] = 0.0 if key == "dash_drop_amount" else 0
 		p.size_changed.connect(_on_size_changed)
 		p.dash_hit.connect(_on_dash_hit)
+		p.dash_drop_caused.connect(_on_dash_drop_caused)
+		p.dung_picked_up.connect(_on_dung_picked_up)
+		p.wall_crashed.connect(func(pid: int) -> void: _add_stat(pid, "wall_crashes", 1))
+		p.boost_pad_entered.connect(func(pid: int) -> void: _add_stat(pid, "boost_pads", 1))
 		_log_assignment(p)
 
 
@@ -238,6 +250,21 @@ func _on_dash_hit(attacker_id: int, victim_id: int) -> void:
 		_hud.set_npc_hits(int(stats[attacker_id]["dash_hits"]))
 
 
+func _on_dash_drop_caused(attacker_id: int, amount: float) -> void:
+	_add_stat(attacker_id, "dash_drop_amount", amount)
+
+
+func _on_dung_picked_up(pid: int, special: bool) -> void:
+	_add_stat(pid, "pickups", 1)
+	if special:
+		_add_stat(pid, "special_pickups", 1)
+
+
+func _add_stat(pid: int, key: String, amount: Variant) -> void:
+	if _running and stats.has(pid):
+		stats[pid][key] += amount
+
+
 func _spawn_npc(event: SoloEvent, event_index: int) -> void:
 	if not _running:
 		return
@@ -272,12 +299,9 @@ func _end_match() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	var results: Array = []
 	for p in players:
-		results.append({
-			"player_id": p.player_id,
-			"size": p.size,
-			"dash_hits": stats[p.player_id]["dash_hits"],
-			"dash_hits_received": stats[p.player_id]["dash_hits_received"],
-		})
+		var entry := {"player_id": p.player_id, "size": p.size}
+		entry.merge(stats[p.player_id])
+		results.append(entry)
 	final_results = results.duplicate(true)
 	match_ended.emit(results.duplicate(true))
 	if mode == "solo":

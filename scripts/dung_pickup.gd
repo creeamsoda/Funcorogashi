@@ -178,6 +178,8 @@ func _on_body_entered(body: Node) -> void:
 	p.play_pickup_se(gain)
 	if is_special():
 		p.apply_special_dung(kind)
+	if p.gameplay_active:
+		p.dung_picked_up.emit(p.player_id, is_special())
 	collected.emit(gain)
 	queue_free()
 

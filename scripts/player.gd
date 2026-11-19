@@ -14,6 +14,14 @@ extends CharacterBody3D
 signal size_changed(player_id: int, size: float)
 signal dashed(player_id: int)
 signal dash_hit(attacker_id: int, victim_id: int)
+## 突進命中で相手に落とさせたフンの量(結果画面の表彰用)。
+signal dash_drop_caused(attacker_id: int, amount: float)
+## フンを拾った(special=スペシャル・フン)。
+signal dung_picked_up(player_id: int, special: bool)
+## 壁に激突してスタンした(滑って継続した場合は含まない)。
+signal wall_crashed(player_id: int)
+## 加速板に乗った瞬間。
+signal boost_pad_entered(player_id: int)
 ## 実機振動の発火契機をテスト・演出連携から観測するための通知。
 signal vibration_requested(player_id: int)
 ## 共有デバイス上の全プレイヤーが対象ならtrue。一部だけなら誤振動防止のためfalse。
@@ -394,6 +402,8 @@ func _check_boost_pad() -> void:
 	var on := Stage.is_on_boost_pad(global_position)
 	var entered := on and not _was_on_boost_pad
 	_was_on_boost_pad = on
+	if entered and gameplay_active:
+		boost_pad_entered.emit(player_id)
 	if not on or state == State.STUNNED:
 		return
 	if is_dash_invincible() and not entered:
@@ -451,6 +461,8 @@ func _process_dashing(delta: float) -> void:
 
 
 func _crash_into_wall() -> void:
+	if gameplay_active:
+		wall_crashed.emit(player_id)
 	_play_audio(_audio.wall_hit)
 	_play_impact_vibrations([self])
 	if Config.balance.wall_crash_drops:
@@ -514,8 +526,10 @@ func _resolve_dash_contact(victim: Player, col: KinematicCollision3D = null) -> 
 			# 突進加速中に相手の突進無敵へぶつかった: こちらだけドロップ
 			_apply_knockback(away)
 			_play_impact_vibrations([self])
+			var before_self := size
 			drop_and_stun()
 			dash_hit.emit(victim.player_id, player_id)
+			victim.dash_drop_caused.emit(victim.player_id, maxf(0.0, before_self - size))
 	elif not is_dash_invincible():
 		# 突進加速中(または突進外)の接触: ドロップさせず突進を続ける。
 		# 残りの移動は相手の表面に沿わせる(正面なら押し付けたまま、突進無敵になった時点で命中)。
@@ -528,8 +542,10 @@ func _resolve_dash_contact(victim: Player, col: KinematicCollision3D = null) -> 
 		# 命中: 相手だけドロップ+スタン、自分は無傷
 		_play_audio(_audio.hit)
 		_play_impact_vibrations([victim], [self])
+		var before_victim := victim.size
 		victim.drop_and_stun()
 		dash_hit.emit(player_id, victim.player_id)
+		dash_drop_caused.emit(player_id, maxf(0.0, before_victim - victim.size))
 		_end_dash()
 
 
