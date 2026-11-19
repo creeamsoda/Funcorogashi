@@ -12,8 +12,6 @@ var _leave_t := LEAVE_DELAY
 
 func _ready() -> void:
 	_make_box(Vector3(1.6, 2.2, 1.4), Color(0.80, 0.45, 0.20))
-	if begin_solo():
-		return
 	_rng.randomize()
 	position = Vector3(_rng.randf_range(-HX * 0.5, HX * 0.5), 1.4, HZ + 3.0) # 南壁の外
 	_throws_left = maxi(1, Config.balance.orangutan_throw_count)

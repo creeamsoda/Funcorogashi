@@ -1,5 +1,5 @@
 extends Node3D
-## NPC実衝突・被弾・拾得除外・停止と、終了後の得点不変性を確認する。
+## チュートリアル用NPC(的)の実衝突・被弾・拾得除外と、終了後の得点不変性を確認する。
 
 var _failures: Array[String] = []
 var _dung: Node3D
@@ -15,7 +15,6 @@ func _ready() -> void:
 	await _test_dash_and_pickup()
 	await _test_three_hits()
 	await _test_dash_input_suppression()
-	await _test_route_and_lifetime()
 	await _test_finish_guards()
 	print("[npc_check] result=", "PASS" if _failures.is_empty() else "FAIL",
 		" failures=", _failures)
@@ -25,7 +24,7 @@ func _ready() -> void:
 func _test_dash_and_pickup() -> void:
 	var human := _human(Vector3.ZERO)
 	human.can_collect = false # 散布全量を拾われる前に検証する。
-	var npc := _npc(PackedVector3Array([Vector3(3, 0, 0), Vector3(17, 0, 0)]), 1.0, 20.0)
+	var npc := _npc(Vector3(3, 0, 0))
 	var signals := {"hits": 0, "vibrations": 0, "npc_vibrations": 0}
 	human.dash_hit.connect(func(_a: int, _v: int) -> void: signals.hits += 1)
 	human.vibration_requested.connect(func(_id: int) -> void: signals.vibrations += 1)
@@ -52,18 +51,10 @@ func _test_dash_and_pickup() -> void:
 	_expect(is_equal_approx(ground_total, detached * (1.0 - Config.balance.drop_loss_ratio)),
 		"NPC scatter preserves configured amount")
 
-	npc.set_physics_process(false)
-	var route_time := npc._route_elapsed
-	var lifetime := npc._alive_elapsed
 	var location := npc.position
-	npc._physics_process(0.1)
-	_expect(is_equal_approx(npc._route_elapsed, route_time) and npc.position.is_equal_approx(location),
-		"stun freezes NPC route")
-	_expect(npc._alive_elapsed > lifetime, "lifetime continues during stun")
-	npc._stun_t = 0.0
-	npc._physics_process(0.01)
-	npc._physics_process(0.1)
-	_expect(npc._route_elapsed > route_time, "NPC resumes after stun")
+	for _i in 10:
+		await get_tree().physics_frame
+	_expect(npc.position.is_equal_approx(location), "NPC stays in place")
 
 	var pickup := DungPickup.create(1.25, npc.player_id)
 	_dung.add_child(pickup)
@@ -78,14 +69,6 @@ func _test_dash_and_pickup() -> void:
 	pickup._on_body_entered(human)
 	_expect(is_equal_approx(human.size, human_before + 1.25), "NPC drop full amount, collected once")
 
-	# 一人用の散布系列はグローバル乱数消費や他個体の散布と独立する。
-	human.set_scatter_seed(76543)
-	npc.set_scatter_seed(76543)
-	for _i in 8:
-		var from_human := human._drop_position(Vector3.ZERO)
-		randf()
-		var from_npc := npc._drop_position(Vector3.ZERO)
-		_expect(from_human.is_equal_approx(from_npc), "dedicated deterministic scatter RNG")
 	human.stop_gameplay()
 	npc.stop_gameplay()
 	human.queue_free()
@@ -96,45 +79,12 @@ func _test_dash_and_pickup() -> void:
 	await get_tree().physics_frame
 
 
-func _test_route_and_lifetime() -> void:
-	var npc := _npc(PackedVector3Array([Vector3(-22, 0, -8), Vector3(22, 0, -8)]), 4.0, 30.0)
-	npc.set_physics_process(false)
-	# 実際に壁を横切り、場内へ進めることを物理APIで検証する。
-	for _i in 120:
-		npc._physics_process(1.0 / 60.0)
-	_expect(npc.position.x > -18.0 and npc.state == Player.State.ROLLING,
-		"NPC crosses arena wall")
-	npc._physics_process(10.0)
-	_expect(npc.is_queued_for_deletion(), "NPC exits at route end")
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var limited := _npc(PackedVector3Array([Vector3(-10, 0, 6), Vector3(10, 0, 6)]), 1.0, 0.5)
-	limited.set_physics_process(false)
-	limited.state = Player.State.STUNNED
-	limited._stun_t = 100.0
-	limited._physics_process(0.6)
-	_expect(limited.is_queued_for_deletion(), "stunned NPC expires at max lifetime")
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-	var late := _npc(PackedVector3Array([Vector3(-20, 0, 6), Vector3(20, 0, 6)]), 2.0, 24.0)
-	late.set_physics_process(false)
-	late.advance_spawn_age(4.0)
-	_expect(is_equal_approx(late.position.x, -12.0) and is_equal_approx(late._alive_elapsed, 4.0),
-		"late spawn catches up route and lifetime")
-	late.advance_spawn_age(21.0)
-	_expect(late.is_queued_for_deletion(), "late expired spawn is removed")
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-
-
 func _test_three_hits() -> void:
 	var previous_ratio := Config.balance.drop_ratio
 	Config.balance.drop_ratio = 0.5
 	var human := _human(Vector3.ZERO)
 	human.can_collect = false
-	var npc := _npc(PackedVector3Array([Vector3(4, 0, 0), Vector3(16, 0, 0)]), 1.0, 30.0)
+	var npc := _npc(Vector3(4, 0, 0))
 	var observed := {"hits": 0}
 	human.dash_hit.connect(func(_a: int, victim: int) -> void:
 		_expect(victim == npc.player_id, "all three dashes hit the same NPC")
@@ -244,13 +194,12 @@ func _human(pos: Vector3) -> Player:
 	return player
 
 
-func _npc(route: PackedVector3Array, speed: float, lifetime: float) -> NpcBeetle:
+func _npc(pos: Vector3) -> NpcBeetle:
 	var npc := (load("res://scenes/NpcBeetle.tscn") as PackedScene).instantiate() as NpcBeetle
 	npc.player_id = 1001
 	npc.initial_size = 8.0
-	npc.set_scatter_seed(12345)
-	npc.setup_route(route, speed, 0.0, 3.0, lifetime)
 	add_child(npc)
+	npc.position = Vector3(pos.x, npc.body_radius(), pos.z)
 	return npc
 
 

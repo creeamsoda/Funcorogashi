@@ -3,7 +3,7 @@ extends CanvasLayer
 ## タイムアップ後の結果発表演出。
 ## show_results(results) で表示。results 要素:
 ## {player_id:int, size:float, dash_hits:int, dash_hits_received:int, dash_drop_amount:float,
-##  pickups:int, special_pickups:int, wall_crashes:int, boost_pads:int}
+##  pickups:int, special_pickups:int, wall_crashes:int, boost_pads:int, cpu:bool}
 ## (成績キーは省略可。無いものは0扱い)
 ## 注: Dictionary の "size" キーは r["size"] で参照(r.size は Dictionary.size() と衝突するため)。
 
@@ -96,6 +96,14 @@ func _build_ui() -> void:
 		contestant.modulate.a = 0.0
 		_root.add_child(contestant)
 		_contestants.append(contestant)
+		if bool(result.get("cpu", false)):
+			# CPUは名札を付けて人間と見分ける(フン球の上に重ねる)。
+			var tag := _label("CPU", 26, Color.WHITE)
+			tag.name = "CpuTag"
+			tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			tag.size = Vector2(CONTESTANT_SIZE.x, 36)
+			tag.position = Vector2(0, 4)
+			contestant.add_child(tag)
 
 	_awards = _pick_awards()
 	for award in _awards:

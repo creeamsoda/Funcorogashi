@@ -1,7 +1,7 @@
 class_name StageLayout
 extends Resource
 ## ステージのオブジェクト配置(resources/stages/*.tres)。外壁の形とフェンス。
-## 選択は BalanceConfig.stage_layout / solo_stage_layout(Stage.LAYOUT_PATHS の番号)。
+## 選択は BalanceConfig.stage_layout(Stage.LAYOUT_PATHS の番号)。
 
 enum ArenaShape { RECT, CIRCLE }
 

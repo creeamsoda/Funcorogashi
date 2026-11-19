@@ -89,7 +89,6 @@ var _slow_factor := 1.0
 var _blackhole_t := 0.0     ## ブラックホール効果の残り(秒)
 var _speed_boost_t := 0.0   ## 高速効果の残り(秒)
 var _dash_suppressed := false
-var _scatter_rng: RandomNumberGenerator
 ## 高低差のあるステージ(Stage.has_elevation)用の上下移動。平らなステージでは使わない(y=半径に固定)。
 var _vy := 0.0
 var _was_on_boost_pad := false  ## 前フレームに加速板の上にいたか(乗った瞬間の検出)
@@ -180,12 +179,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## --- 公開API(契約 §6-2) ---
-
-## 一人用の散布だけを個体専用乱数にする。対戦は従来の乱数を維持する。
-func set_scatter_seed(value: int) -> void:
-	_scatter_rng = RandomNumberGenerator.new()
-	_scatter_rng.seed = value
-
 
 ## モード選択・リトライの決定ボタンを離すまで最初の突進を抑止する。
 func suppress_dash_until_release() -> void:
@@ -607,8 +600,8 @@ func _drop_position(origin: Vector3) -> Vector3:
 	var min_r: float = Config.balance.drop_scatter_min_radius
 	var max_r: float = maxf(min_r, Config.balance.drop_scatter_radius)
 	for _attempt in 12:
-		var ang := (_scatter_rng.randf() if _scatter_rng != null else randf()) * TAU
-		var d := _scatter_rng.randf_range(min_r, max_r) if _scatter_rng != null else randf_range(min_r, max_r)
+		var ang := randf() * TAU
+		var d := randf_range(min_r, max_r)
 		var p := origin + Vector3(cos(ang), 0.0, sin(ang)) * d
 		if Stage.is_inside_arena(p, DROP_MARGIN) and not _drop_lands_above(p):
 			return Vector3(p.x, 0.0, p.z)
@@ -722,7 +715,7 @@ func _update_vertical(delta: float) -> void:
 		motion = col.get_remainder().slide(col.get_normal())
 
 
-## --- 入力(NpcBeetle が上書きする) ---
+## --- 入力(NpcBeetle / CpuBeetle が上書きする) ---
 
 func _dash_input_held() -> bool:
 	return PlayerInput.dash_held(input_device)

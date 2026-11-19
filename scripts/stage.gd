@@ -19,7 +19,7 @@ const FENCE_VISUAL_HEIGHT := 0.9
 const FENCE_COLLISION_HEIGHT := 4.0
 const FENCE_COLOR := Color(0.62, 0.45, 0.26)
 const PILLAR_COLOR := Color(0.32, 0.32, 0.35)  ## 杭(濃いグレー。茶色のフンと見分けやすく)
-## BalanceConfig.stage_layout / solo_stage_layout の番号順。
+## BalanceConfig.stage_layout の番号順。
 const LAYOUT_PATHS := [
 	"res://resources/stages/open.tres",
 	"res://resources/stages/center.tres",

@@ -12,8 +12,6 @@ extends Resource
 @export_group("Stage Layout")
 ## 対戦のステージ(外壁の形+フェンス配置。Stage.LAYOUT_PATHS の順)。試合開始時に反映(パネルで変えたらリトライ)。
 @export_enum("Open", "Center", "Corners", "Lanes", "CircleCross", "Pedestal", "BoostPads") var stage_layout: int = 6
-## 一人プレイのフェンス配置。固定コースがフェンス前提でないため当面 Open。
-@export_enum("Open", "Center", "Corners", "Lanes", "CircleCross", "Pedestal", "BoostPads") var solo_stage_layout: int = 0
 
 @export_group("Stage Colors")
 @export var floor_color: Color = Color(0.66, 0.50, 0.36)  ## 床の色(土をイメージした明るめの茶色)。試合開始時に反映
@@ -25,13 +23,6 @@ extends Resource
 @export var boost_pad_line_spacing: float = 0.6  ## 枠線の間隔(m)
 @export var boost_pad_line_width: float = 0.2    ## 枠線の太さ(m。どの辺も同じ)
 @export var boost_pad_line_speed: float = 0.6    ## 枠線が外へ広がる速さ(m/s)
-
-@export_group("Solo NPC")
-@export var solo_npc_speed: float = 3.0            ## 横断の経路進行速度(m/s)
-@export var solo_npc_initial_size: float = 12.0    ## 出現時の保有フン量
-@export var solo_npc_sway: float = 0.65            ## 経路からの蛇行幅(m)
-@export var solo_npc_sway_period: float = 3.0      ## 蛇行の周期(秒)
-@export var solo_npc_lifetime: float = 24.0        ## スタン中も進む最大滞在時間(秒)
 
 @export_group("Dung Growth")
 @export_enum("Linear", "VolumeBased", "Logarithmic") var size_visual_mode: int = 0  ## 内部サイズから見た目半径を求める方式
@@ -170,7 +161,7 @@ func dash_charge_ratio(held_time: float, time_scale: float = 1.0) -> float:
 @export var flee_speed_size_penalty: float = 0.0   ## 大きいフンほど遅く(速度 / (1 + これ×サイズ))。0 = 無効
 
 @export_group("Special Dung")
-## オランウータンが投げるフンの一部が特殊フンになる(対戦のみ。一人プレイは記録の再現性のため出さない)。
+## オランウータンが投げるフンの一部が特殊フンになる。
 ## 盤面上の特殊フンが special_max_on_board 個に達している間は出ない。ブラックホールは特殊フンを引き寄せない。
 ## 特殊フンはサイズに関係なく必ず逃げ、範囲内の全プレイヤーと壁を同時に避ける向きへ逃げる。
 @export_range(0.0, 1.0, 0.01) var special_blackhole_chance: float = 0.15 ## オランウータンのフンがブラックホールになる確率

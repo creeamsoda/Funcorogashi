@@ -1,6 +1,7 @@
 class_name GameManager
 extends Node3D
 ## モード別の試合構築、共通時計、終了時の凍結と結果確定。
+## versus: 人間2〜4人の対戦。solo(「ひとりで遊ぶ」): 人間1人+CPU3体の対戦(ルールは versus と同じ)。
 
 signal time_changed(time_left: float)
 signal match_ended(results: Array)
@@ -10,6 +11,9 @@ const SPAWN_SPOTS := [
 ]
 const SPAWN_SPOTS_2P := [Vector3(-9, 0, 0), Vector3(9, 0, 0)] ## 2人は左右中央に対称配置
 const CROWN_HIDE_TIME := 30.0
+## 「ひとりで遊ぶ」の参加人数(人間1人+CPU)。
+const SOLO_TOTAL_PLAYERS := 4
+const SOLO_HUMAN_PLAYERS := 1
 ## 対戦開始の演出: 画面が切り替わった瞬間から動けるが、時計は「スタート！」表示から進める。
 const INTRO_TEXT := "フンを一番でっかくしよう！"
 const INTRO_FONT_SIZE := 84
@@ -24,13 +28,12 @@ const STAT_KEYS := [
 ]
 
 @export_enum("session", "versus", "solo") var mode := "session"
-@export var record_scores := true
-var course: SoloCourse
+## 「ひとりで遊ぶ」の人間の人数と全体の人数(残りはCPU)。テストでCPUだけの試合にするときに変える。
+@export var solo_human_count := SOLO_HUMAN_PLAYERS
+@export var solo_total_count := SOLO_TOTAL_PLAYERS
 var elapsed := 0.0
 var duration := 0.0
-var score_profile := ""
 var final_results: Array = []
-var npc_hit_counts: Dictionary = {}
 var players: Array[Player] = []
 ## player_id -> 結果画面の表彰用の集計(STAT_KEYS 参照)
 var stats := {}
@@ -41,9 +44,6 @@ var _dung: Node3D
 var _hud: Hud
 var _crown_hidden := false
 var _world: Node3D
-var _director: SoloDirector
-var _score_store := ScoreStore.new()
-var _run_id := ""
 
 
 func _ready() -> void:
@@ -53,15 +53,8 @@ func _ready() -> void:
 	var play_intro := false
 	if mode == "session":
 		mode = MatchSession.mode
-		play_intro = mode == "versus"
-	if mode == "solo":
-		if course == null:
-			course = MatchSession.load_course()
-		duration = course.duration
-		score_profile = MatchSession.score_profile(course, Config.balance)
-		_run_id = MatchSession.new_run_id()
-	else:
-		duration = Config.balance.match_duration
+		play_intro = mode == "versus" or mode == "solo"
+	duration = Config.balance.match_duration
 	time_left = duration
 	for device in Input.get_connected_joypads():
 		if InputRouter.is_combined_joycon(device):
@@ -73,7 +66,7 @@ func _ready() -> void:
 	_world.name = "World"
 	add_child(_world)
 	var stage := load("res://scenes/Stage.tscn").instantiate() as Stage
-	stage.layout = Stage.load_layout(Config.balance.solo_stage_layout if mode == "solo" else Config.balance.stage_layout)
+	stage.layout = Stage.load_layout(Config.balance.stage_layout)
 	_world.add_child(stage)
 
 	_dung = Node3D.new()
@@ -87,29 +80,20 @@ func _ready() -> void:
 	if mode != "solo" and PlayerSlots.is_active():
 		PlayerSlots.assigned.connect(_on_slot_assigned)
 
-	if mode == "solo":
-		_director = SoloDirector.new()
-		_director.name = "SoloDirector"
-		_director.course = course
-		_director.npc_requested.connect(_spawn_npc)
-		_world.add_child(_director)
-	else:
-		_world.add_child(load("res://scenes/animals/AnimalSpawner.tscn").instantiate())
+	_world.add_child(load("res://scenes/animals/AnimalSpawner.tscn").instantiate())
 
 	_hud = (load("res://scenes/ui/HUD.tscn") as PackedScene).instantiate() as Hud
 	add_child(_hud)
-	if mode == "solo":
-		_hud.setup_solo(duration, _score_store.best(score_profile))
-	else:
-		_hud.setup(players.size())
+	var names: Array[String] = []
+	for p in players:
+		names.append(display_name(p))
+	_hud.setup(players.size(), names)
 	_hud.set_time(time_left)
 	if OS.is_debug_build():
 		var debug_tools := DebugTools.new()
 		debug_tools.name = "DebugTools"
 		add_child(debug_tools)
 	_running = true
-	if _director != null:
-		_director.advance_to(0.0)
 	if play_intro:
 		_play_intro()
 
@@ -154,18 +138,37 @@ static func spawn_spots_for(n: int, stage: Stage) -> Array:
 	return SPAWN_SPOTS
 
 
+## 人間の人数(残りはCPU)。
+func human_count() -> int:
+	return clampi(solo_human_count, 0, solo_total_count) if mode == "solo" else versus_player_count()
+
+
+## 人間プレイヤーの入力デバイス(プレイヤーindex順)。
+func _human_devices(n: int) -> Array[int]:
+	return InputRouter.devices(n) if mode == "solo" else versus_devices(n)
+
+
+## HUD・結果画面の名前。CPUは「CPU」、人間は「P番号」。
+static func display_name(p: Player) -> String:
+	return "CPU" if p is CpuBeetle else "P%d" % (p.player_id + 1)
+
+
 func _spawn_players() -> void:
-	var n: int = 1 if mode == "solo" else versus_player_count()
-	var devices: Array[int] = InputRouter.devices(n) if mode == "solo" else versus_devices(n)
+	var humans := human_count()
+	var n: int = solo_total_count if mode == "solo" else humans
+	var devices := _human_devices(humans)
 	var spots: Array = spawn_spots_for(n, get_tree().get_first_node_in_group("stage") as Stage)
 	for i in n:
-		var p: Player = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
+		var p: Player
+		if i < humans:
+			p = (load("res://scenes/Player.tscn") as PackedScene).instantiate()
+			p.input_device = devices[i]
+		else:
+			p = CpuBeetle.new()
+			p.name = "Cpu%d" % i
 		p.player_id = i
-		p.input_device = devices[i]
-		if mode == "solo":
-			p.set_scatter_seed(173 + i)
 		_world.add_child(p)
-		p.global_position = course.player_start if mode == "solo" else spots[i % spots.size()]
+		p.global_position = spots[i % spots.size()]
 		p.suppress_dash_until_release()
 		players.append(p)
 		stats[i] = {}
@@ -185,15 +188,16 @@ func _on_joy_connection_changed(_device: int, _connected: bool) -> void:
 	if mode != "solo" and PlayerSlots.first_come:
 		return
 	# 起動後にコントローラが増減したら割り当てを更新(起動直後の列挙漏れ対策)
-	var devices: Array[int] = InputRouter.devices(players.size()) if mode == "solo" else versus_devices(players.size())
-	for i in players.size():
+	var humans := human_count()
+	var devices := _human_devices(humans)
+	for i in mini(humans, players.size()):
 		players[i].input_device = devices[i]
 		players[i].suppress_dash_until_release()
 		_log_assignment(players[i])
 
 
 func _on_slot_assigned(slot: int, _device: int) -> void:
-	if slot < 0 or slot >= players.size():
+	if slot < 0 or slot >= players.size() or players[slot] is CpuBeetle:
 		return
 	players[slot].input_device = PlayerSlots.device_for(slot)
 	players[slot].suppress_dash_until_release()
@@ -201,7 +205,9 @@ func _on_slot_assigned(slot: int, _device: int) -> void:
 
 func _log_assignment(p: Player) -> void:
 	var label := "idle"
-	if p.input_device == -1:
+	if p is CpuBeetle:
+		label = "CPU"
+	elif p.input_device == -1:
 		label = "keyboard-arrows"
 	elif p.input_device == -2:
 		label = "keyboard-WASD"
@@ -222,9 +228,6 @@ func _physics_process(delta: float) -> void:
 	time_changed.emit(time_left)
 	if _hud != null:
 		_hud.set_time(time_left)
-	# 最後のフレームでも、期限より前の予定を消化してから確定する。
-	if _director != null:
-		_director.advance_to(minf(elapsed, maxf(0.0, duration - 0.000001)))
 	if time_left <= 0.0:
 		_end_match()
 
@@ -245,9 +248,6 @@ func _on_dash_hit(attacker_id: int, victim_id: int) -> void:
 		stats[attacker_id]["dash_hits"] += 1
 	if stats.has(victim_id):
 		stats[victim_id]["dash_hits_received"] += 1
-	elif mode == "solo" and stats.has(attacker_id):
-		npc_hit_counts[victim_id] = int(npc_hit_counts.get(victim_id, 0)) + 1
-		_hud.set_npc_hits(int(stats[attacker_id]["dash_hits"]))
 
 
 func _on_dash_drop_caused(attacker_id: int, amount: float) -> void:
@@ -263,19 +263,6 @@ func _on_dung_picked_up(pid: int, special: bool) -> void:
 func _add_stat(pid: int, key: String, amount: Variant) -> void:
 	if _running and stats.has(pid):
 		stats[pid][key] += amount
-
-
-func _spawn_npc(event: SoloEvent, event_index: int) -> void:
-	if not _running:
-		return
-	var npc := NpcBeetle.new()
-	npc.name = "Npc%d" % event_index
-	npc.player_id = 1000 + event_index
-	npc.initial_size = event.npc_size
-	npc.set_scatter_seed(7919 + event_index * 37)
-	npc.setup_route(event.path, event.speed, event.npc_sway, event.npc_sway_period, event.npc_lifetime)
-	_world.add_child(npc)
-	npc.advance_spawn_age(maxf(0.0, elapsed - event.at))
 
 
 ## 契約 §6-2: 動物や突進ドロップからフンを生成する共通入口。
@@ -299,41 +286,20 @@ func _end_match() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	var results: Array = []
 	for p in players:
-		var entry := {"player_id": p.player_id, "size": p.size}
+		var entry := {"player_id": p.player_id, "size": p.size, "cpu": p is CpuBeetle}
 		entry.merge(stats[p.player_id])
 		results.append(entry)
 	final_results = results.duplicate(true)
 	match_ended.emit(results.duplicate(true))
-	if mode == "solo":
-		var final_score: float = final_results[0]["size"]
-		var record_result := {
-			"saved": false, "new_best": false, "best": _score_store.best(score_profile),
-			"records": _score_store.records(score_profile), "error": "",
-		}
-		var eligible := record_scores and time_left <= 0.0 and not players[0].debug_growth_enabled and not players[0].debug_growth_used
-		# 実行中に調整値を書き換えた試合は通常記録と混ぜない。
-		eligible = eligible and score_profile == MatchSession.score_profile(course, Config.balance)
-		if eligible:
-			record_result = _score_store.submit(score_profile, final_score, _run_id)
-		else:
-			record_result["error"] = "練習プレイ：記録は保存しません"
-		var solo_results := SoloResults.new()
-		add_child(solo_results)
-		solo_results.retry_requested.connect(_retry)
-		solo_results.menu_requested.connect(_menu)
-		solo_results.show_score(final_score, int(final_results[0]["dash_hits"]), record_result)
-	else:
-		var res := (load("res://scenes/ui/Results.tscn") as PackedScene).instantiate() as Results
-		add_child(res)
-		res.retry_requested.connect(_retry)
-		res.menu_requested.connect(_menu)
-		res.show_results(results)
+	var res := (load("res://scenes/ui/Results.tscn") as PackedScene).instantiate() as Results
+	add_child(res)
+	res.retry_requested.connect(_retry)
+	res.menu_requested.connect(_menu)
+	res.show_results(results)
 
 
 func _retry() -> void:
 	MatchSession.mode = mode
-	if mode == "solo":
-		MatchSession.course_override = course
 	MatchSession.retry(get_tree())
 
 
@@ -342,7 +308,7 @@ func _menu() -> void:
 
 
 func _update_leader_crown() -> void:
-	if players.is_empty() or _crown_hidden or mode == "solo":
+	if players.is_empty() or _crown_hidden:
 		return
 	var leader: Player = players[0]
 	for p in players:

@@ -11,8 +11,6 @@ var home := Vector3.ZERO
 
 
 func _ready() -> void:
-	# 経路は使わない(寿命も実質無限)。NpcBeetle 既定の横断経路を作らせないためだけに渡す。
-	setup_route(PackedVector3Array([home, home + Vector3.RIGHT]), 1.0, 0.0, 1.0, 1.0e9)
 	super._ready()
 	position = Vector3(home.x, position.y, home.z)
 	facing = Vector3.RIGHT # 横向き(フンコロガシがフンの左に見える)
