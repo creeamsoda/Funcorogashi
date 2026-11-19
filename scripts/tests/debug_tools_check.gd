@@ -22,6 +22,14 @@ func _ready() -> void:
 	var panel := tools.panel
 	if not ("Dash" in panel.group_names() and "Drop & Pickup" in panel.group_names()):
 		failures.append("groups=%s" % str(panel.group_names()))
+	# CPUの調整値(CpuProfile)もパネルに並び、変更が Config.cpu に即反映される
+	if not ("CPU" in panel.group_names()):
+		failures.append("cpu_group_missing")
+	var old_aggr: float = Config.cpu.aggression
+	panel._set_value("aggression", 1.7, Config.cpu)
+	if not is_equal_approx(Config.cpu.aggression, 1.7):
+		failures.append("cpu_live_set")
+	Config.cpu.aggression = old_aggr
 
 	panel.open()
 	if not get_tree().paused or not panel.visible:

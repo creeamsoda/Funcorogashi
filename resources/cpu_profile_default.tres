@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="CpuProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/cpu/cpu_profile.gd" id="1_cpu"]
+
+[resource]
+script = ExtResource("1_cpu")

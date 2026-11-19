@@ -1,6 +1,6 @@
 # フンコロバトル CPU対戦 実装計画
 
-作成日: 2026-11-19 / 状態: 仕様決定のみ。実装は未着手。
+作成日: 2026-11-19 / 状態: C1〜C6 実装済み・C7 の自動検証済み。実機での1人プレイ(盛り上げ役として楽しいか)は未確認。
 
 1人で遊ぶときにCPUと対戦できるようにする。既存の一人用スコアアタックはなくし、「ひとりで遊ぶ」をCPU戦に置き換える。
 
@@ -113,3 +113,35 @@ F1の調整パネルに並べて、実行中に変えられるようにする。
 ### C7. 検証と調整
 - CPU4体だけの試合をheadlessで何回も回し、詰まり・壁激突の回数・命中率・回収数を記録するテストを作る。
 - 実機で1人プレイを遊んで、盛り上げ役として楽しいかを確かめる。
+
+## 4. 実装状況(2026-11-19)
+
+| 段階 | 状態 | 内容 |
+|---|---|---|
+| C1 | ✅ | `scripts/solo/`・`resources/solo/`・一人用結果画面・一人用テスト5種を削除。`GameManager`/`MatchSession`/`Hud`/`main.gd`/動物/`ThrownDung` のスコアアタック分岐、`BalanceConfig` の `solo_*`、`Player.set_scatter_seed` を整理。`NpcBeetle` はその場に留まる的(チュートリアル用)だけに縮小し、`NpcCheck` から横断NPCの部分を外した |
+| C2 | ✅ | `CpuBeetle extends Player`(`_read_move`/`_dash_input_held` を上書き。入力デバイスは待機 -3 で振動・割り当て・疑似成長の対象外、`"player"` グループには残る)。`GameManager` の `solo` = 人間1人+CPU3体(対戦と同じ出現位置・開始演出)。HUD・結果画面に「CPU」と表示。結果の各要素に `cpu: bool` |
+| C3 | ✅ | `CpuSense`(相手・地面のフン(速度は位置の差分から推定)・壁/フェンス/杭のレイ)、`CpuDashModel`(溜め時間⇔届く距離、移動時間)。予測と実際の突進の誤差は約2%以内 |
+| C4 | ✅ | 回収: 点数でフンを選ぶ。動かないフンは触れて回収、近くの動くフンは壁と反対側へ回り込んで押し込み、遠くの動くフンは溜めた突進で取りに行く。通り道の動かないフンへ寄り道。前方の壁・杭・加速板を避け、詰まったら回り道 |
+| C5 | ✅ | 攻撃: 1位を優先(`leader_bias`)、同じ相手の連続は控えめ(`same_target_penalty`)、先読みして届く距離に合わせて溜め、突進中も狙いへ曲げる。回避: 自分を狙った溜めに `reaction_delay` 後に気づき、直角へ最低溜めの突進(クールタイム中は歩いて避ける) |
+| C6 | ✅ | ゴールは `think_interval` ごとの点数比較(今のゴールを少し優先)。特殊フンは点数を `special_score_bonus` 倍し、`special_give_up_time` 後も遠ければ諦めて `give_up_cooldown` の間は狙わない。`CpuProfile` は F1 の「CPU」「CPU Detail」に並ぶ(保存で `cpu_profile_default.tres` へ)。F2 でゴールの色(回収=緑/攻撃=赤/回避=水色/うろつき=灰)と狙いの先を描く |
+| C7 | 🟨 | `CpuMatchSim` で自動検証済み。実機プレイは未確認 |
+
+### 計画からの追加・変更
+- 攻撃の頻度を `aggression` で直接変えられるよう、攻撃の突進のあとに `attack_rest_time / aggression` 秒の休みを入れた(点数の倍率だけでは、狙うものが他にないときに頻度が変わらなかったため)。
+- 壁・杭への激突を減らすため: 突進前に3本のレイで激突しない長さを確かめ、溜めはその長さに抑える。狙いとの間に杭があれば離すのを待つ。突進中は止まるまでの残り距離ぶん先を見て、滑れない角度の壁・杭は沿う向きへそらす。加速板を通る突進は打たず、板の上では最大溜めの突進が激突しない向きへスティックを倒す。
+- 「CPU Detail」グループ: `attack_min_distance` / `attack_max_distance` / `attack_overshoot` / `attack_rest_time` / `special_score_bonus` / `give_up_cooldown` / `stuck_time` / `wall_probe_distance`。
+
+### 検証結果(headless・`--fixed-fps 60`・既定ステージ「加速板+杭」)
+- `CpuCheck`: 台本入力での移動・溜め・突進・被弾、予測の誤差(2%以内)、距離⇔溜め時間の往復、壁・通り道・先読み、回避、静止した相手への命中、「ひとりで遊ぶ」の生成と結果のCPU印・名札 … PASS
+- `CpuMatchSim`(120秒の4体戦×3): 壁激突 1試合あたり約10〜15回(対策前は約40回)、命中率(命中/攻撃の突進)約60%、攻撃の突進 1試合あたり約90回(4体合計)、回避の突進 1試合あたり約20回。CPU1体だけの40秒でサイズ 1→約15〜25。`aggression` 0.3→2.5 で攻撃の突進 約20→約100回(60秒)
+- 既存テストは `OrangutanHitCheck` 以外 PASS。`OrangutanHitCheck` は今回の変更前から FAIL(`balance_default.tres` が `orangutan_hit_effect=1`(ボーナスのみ)なのにスロウを期待している)
+
+### 実行方法
+```
+godot --headless --path . res://scenes/tests/CpuCheck.tscn
+godot --headless --path . --fixed-fps 60 res://scenes/tests/CpuMatchSim.tscn -- --matches=3
+```
+環境変数 `CPU_TRACE=1` を付けると、CPUの突進の開始と壁激突を1行ずつ表示する(激突の原因調べ用)。
+
+### 次にやること
+- 実機で1人プレイを遊び、CPUの強さ・攻撃の頻度(`aggression`・`attack_rest_time`)・回避の反応(`reaction_delay`)を調整する。

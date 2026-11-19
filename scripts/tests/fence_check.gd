@@ -5,7 +5,7 @@ extends Node3D
 ##  crash   : フェンスへの突進激突はスタンのみ(フンを落とさない)
 ##  push_out: フェンスに重なる位置に落ちたフンはフェンスの外へ出る
 ##  no_pass : 逃げるフンはフェンスをすり抜けない
-##  game    : 試合で BalanceConfig の選択が反映される(対戦=stage_layout、一人=solo_stage_layout)
+##  game    : 試合で BalanceConfig の選択が反映される(対戦・ひとりで遊ぶとも stage_layout)
 
 const EXPECTED_COUNTS := [0, 4, 8, 2, 8, 0, 0]
 const MIN_SPAWN_CLEARANCE := 1.5
@@ -33,7 +33,6 @@ func _ready() -> void:
 
 func _test_layouts_and_spawns() -> void:
 	var spots: Array = GameManager.SPAWN_SPOTS + GameManager.SPAWN_SPOTS_2P
-	spots.append(load(MatchSession.DEFAULT_COURSE).player_start)
 	for i in Stage.LAYOUT_PATHS.size():
 		var stage := _stage(i)
 		await get_tree().physics_frame
@@ -46,7 +45,6 @@ func _test_layouts_and_spawns() -> void:
 		var layout_spots: Array = spots.duplicate()
 		if not stage.layout.spawn_spots.is_empty(): # レイアウト側で4人の初期位置を上書きしている
 			layout_spots = Array(stage.layout.spawn_spots) + GameManager.SPAWN_SPOTS_2P
-			layout_spots.append(spots[-1])
 		if not stage.layout.pillars.is_empty():
 			# 中央に杭があるステージ(加速板+杭)は対戦専用。一人プレイの開始位置(中央)は対象外
 			layout_spots.pop_back()
@@ -136,24 +134,21 @@ func _test_no_pass() -> void:
 
 func _test_game() -> void:
 	var old_versus: int = Config.balance.stage_layout
-	var old_solo: int = Config.balance.solo_stage_layout
 	Config.balance.stage_layout = 3
-	Config.balance.solo_stage_layout = 2
+	# 対戦も「ひとりで遊ぶ」(CPU戦)も同じ stage_layout を使う
 	for mode in ["versus", "solo"]:
 		var gm: GameManager = (load("res://scenes/Game.tscn") as PackedScene).instantiate()
 		gm.mode = mode
-		gm.record_scores = false
 		add_child(gm)
 		await _frames(2)
 		var stage := gm.get_node("World").get_child(0) as Stage
-		var want: int = EXPECTED_COUNTS[3 if mode == "versus" else 2]
+		var want: int = EXPECTED_COUNTS[3]
 		print("  [game %s] fences=%d" % [mode, stage.fence_count()])
 		if stage.fence_count() != want:
 			_failures.append("game_%s" % mode)
 		gm.queue_free()
 		await _frames(2)
 	Config.balance.stage_layout = old_versus
-	Config.balance.solo_stage_layout = old_solo
 
 
 func _stage(index: int) -> Stage:

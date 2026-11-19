@@ -17,8 +17,6 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	var body := _make_box(Vector3(0.6, 0.6, 1.4), Color(0.30, 0.55, 0.30))
 	body.visible = Config.balance.bird_raptor_visible # 画面の情報量を減らすため既定は非表示
-	if begin_solo():
-		return
 	_rng.randomize()
 	_setup_entry()
 	_bounces_left = _rng.randi_range(2, 3) # 場内で折り返す回数

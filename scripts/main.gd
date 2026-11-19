@@ -41,7 +41,7 @@ func _ready() -> void:
 	versus.pressed.connect(_open_count_dialog)
 	var solo := _add_title_button(buttons, "ひとりで遊ぶ", 0.8)
 	solo.name = "SoloButton"
-	solo.pressed.connect(_launch.bind("solo"))
+	solo.pressed.connect(_launch_solo)
 	var credits := _add_title_button(buttons, "クレジット", 0.5)
 	credits.name = "CreditsButton"
 	credits.pressed.connect(_open_credits)
@@ -324,32 +324,9 @@ func _is_credits_close_event(event: InputEvent) -> bool:
 		return event.button_index == JOY_BUTTON_A or event.button_index == JOY_BUTTON_B
 	return false
 
-func _launch(selected_mode: String) -> void:
+## 「ひとりで遊ぶ」: 人間1人+CPU3体の対戦を始める。
+func _launch_solo() -> void:
 	if _launching:
 		return
 	_launching = true
-	MatchSession.start(get_tree(), selected_mode)
-
-## ランキング表示。タイトル画面からは外したが、専用画面を作るときに再利用するため残しておく。
-func _build_records(parent: Control) -> void:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size.x = 400
-	panel.add_theme_stylebox_override("panel", MenuStyle.panel_style())
-	parent.add_child(panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 5)
-	panel.add_child(box)
-	box.add_child(MenuStyle.make_label("ハイスコア", 29, MenuStyle.GOLD))
-	box.add_child(MenuStyle.make_label("この端末の記録 · 現在のコース", 16, MenuStyle.MUTED))
-	box.add_child(HSeparator.new())
-	var course := MatchSession.load_course()
-	var records: Array = ScoreStore.new().records(MatchSession.score_profile(course, Config.balance))
-	if records.is_empty():
-		var empty := MenuStyle.make_label("最初の記録をつくろう！\n\nひとりで遊ぶを選んで\nスコアアタックに挑戦。", 22, MenuStyle.MUTED)
-		empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		box.add_child(empty)
-	else:
-		for i in records.size():
-			var row: Dictionary = records[i]
-			box.add_child(MenuStyle.make_label("%2d   %8.2f" % [i + 1, float(row["score"])], 23, MenuStyle.GOLD if i == 0 else MenuStyle.TEXT))
+	MatchSession.start_solo(get_tree())

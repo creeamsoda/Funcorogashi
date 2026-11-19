@@ -10,7 +10,6 @@ var _size := 1.0
 var _start := Vector3.ZERO
 var _target := Vector3.ZERO
 var _landing_preview: MeshInstance3D
-var externally_clocked: bool = false
 var _age: float = 0.0
 var _finished: bool = false
 
@@ -22,7 +21,6 @@ static func create(from: Vector3, to: Vector3, sz: float = 1.0) -> ThrownDung:
 	return t
 
 func _ready() -> void:
-	set_physics_process(not externally_clocked)
 	global_position = _start
 	_create_landing_preview()
 	_vel = (_target - _start) / FLIGHT
@@ -39,11 +37,11 @@ func _ready() -> void:
 const HIT_RADIUS := 0.3
 
 func _physics_process(delta: float) -> void:
-	advance_solo(_age + delta)
+	_advance(_age + delta)
 
 
 ## 開始点と初速から軌道を直接求めるため、着地が delta によってずれない。
-func advance_solo(age: float) -> void:
+func _advance(age: float) -> void:
 	if _finished or age < _age or not can_process():
 		return
 	_age = maxf(0.0, age)
@@ -78,8 +76,7 @@ func _land() -> void:
 	var parent: Node = c if c != null else get_parent()
 	if parent != null:
 		var pk := DungPickup.create(_size)
-		if not externally_clocked: # 一人プレイ(外部時計)は記録の再現性のため特殊フンを出さない
-			pk.kind = DungPickup.roll_kind(self)
+		pk.kind = DungPickup.roll_kind(self)
 		parent.add_child(pk)
 		pk.global_position = Vector3(global_position.x, 0.0, global_position.z)
 	queue_free()
